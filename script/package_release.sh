@@ -1,0 +1,40 @@
+#!/usr/bin/env bash
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+VERSION="${1:?Usage: package_release.sh version build output-directory}"
+BUILD="${2:?Provide a positive build number}"
+OUT="${3:?Provide an output directory}"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD" =~ ^[1-9][0-9]*$ || "$(uname -m)" != arm64 ]]; then
+    echo 'Release packaging requires major.minor.patch, a positive build number, and an Apple Silicon Mac.' >&2
+    exit 2
+fi
+mkdir -p "$OUT"
+OUT="$(cd "$OUT" && pwd)"
+NAME="StudSync-$VERSION-arm64.zip"
+if [[ -e "$OUT/$NAME" || -e "$OUT/$NAME.sha256" ]]; then
+    echo 'Release output already exists; choose an empty output directory.' >&2
+    exit 1
+fi
+STAGING="$(mktemp -d)"
+trap 'rm -rf "$STAGING"' EXIT
+./script/build_app.sh "$STAGING/StudSync.app" "$VERSION" "$BUILD"
+ditto -c -k --sequesterRsrc --keepParent "$STAGING/StudSync.app" "$STAGING/$NAME"
+ditto -x -k "$STAGING/$NAME" "$STAGING/unpacked"
+APP="$STAGING/unpacked/StudSync.app"
+plutil -lint "$APP/Contents/Info.plist"
+codesign --verify --deep --strict "$APP"
+[[ -x "$APP/Contents/MacOS/StudSync" ]]
+[[ -s "$APP/Contents/Resources/AppIcon.icns" ]]
+[[ "$(lipo -archs "$APP/Contents/MacOS/StudSync")" == arm64 ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" == com.gnagster.StudSync ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" == "$VERSION" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" == "$BUILD" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" == 15.0 ]]
+[[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/en.lproj/Localizable.strings" ]]
+[[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/de.lproj/Localizable.strings" ]]
+for license in StudSync SwiftSoup LRUCache SwiftAtomics; do
+    [[ -s "$APP/Contents/Resources/Licenses/$license.txt" ]]
+done
+mv "$STAGING/$NAME" "$OUT/$NAME"
+(cd "$OUT" && shasum -a 256 "$NAME" > "$NAME.sha256" && shasum -a 256 -c "$NAME.sha256")
+echo "Verified release archive: $OUT/$NAME"
