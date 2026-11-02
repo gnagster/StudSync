@@ -52,7 +52,7 @@ The hosted image is `macos-26-arm64`, while the manifest and application compile
 
 The runtime check found a correctness issue: before the fix, every sampled main-thread stack was inside `AppStore.init → CredentialVault.read → SecItemCopyMatching`, waiting for system Keychain authorization before `NSApplication.run`. A successful process-existence check alone had not proved that the app event loop started.
 
-The fix in open PR #21 loads saved credentials after initialization and performs blocking reads/writes off the main actor, retaining system authorization. A second sample found the main thread in the normal AppKit event loop and the waiting Keychain call on a background thread. Its later cancellation fix releases login controls while the old request remains blocked; synthetic regressions exercise a new manual login and web-session adoption without stale state updates. An in-flight system request can still finish, and new credential operations wait behind it to preserve save order. No real Keychain entries are changed by these tests.
+The fix merged in PR #21 loads saved credentials after initialization and performs blocking reads/writes off the main actor, retaining system authorization. A second sample found the main thread in the normal AppKit event loop and the waiting Keychain call on a background thread. Its later cancellation fix releases login controls while the old request remains blocked; synthetic regressions exercise a new manual login and web-session adoption without stale state updates. An in-flight system request can still finish, and new credential operations wait behind it to preserve save order. No real Keychain entries are changed by these tests.
 
 Three ten-second intervals of the fixed release process, still waiting for Keychain authorization:
 
@@ -64,4 +64,22 @@ Three ten-second intervals of the fixed release process, still waiting for Keych
 
 Method: one-second `sample` traces plus process-only `proc_pid_rusage(RUSAGE_INFO_V0)` snapshots. CPU uses deltas of user/system Mach-time counters converted with `mach_timebase_info`; wakeups are counter deltas. No credentials, course titles, documents, or raw traces are committed. Measurements exclude other processes, including system authorization services.
 
-The traces establish a wait inside Keychain I/O; system dialogs were not inspected. This is a bounded Keychain-waiting observation, not authenticated idle, sync-load, sleep/wake, energy-consumption, visual, or Start at Login acceptance. Finish those developer checks after OS authorization and integration of the startup fix. Do not infer battery life from these counters.
+The traces establish a wait inside Keychain I/O; system dialogs were not inspected. These earlier measurements describe the authorization-waiting state. Do not infer battery life from these counters.
+
+## Authenticated idle after Keychain authorization
+
+The owner subsequently confirmed Keychain authorization and successful sign-in. The same running app was measured without rebuilding, restarting, changing settings or interrupting it. A one-second stack sample finds the main thread in `NSApplication.run` and no `CredentialVault.read`/`SecItemCopyMatching` wait. Only the non-identifying `setupComplete`, `intervalMinutes` and `lastSync` settings were inspected: setup is complete, the interval is 60 minutes, and a successful sync was recorded within the current process lifetime. The hourly timer itself was not forced or observed firing.
+
+Three ten-second intervals after sign-in:
+
+| Interval | CPU (% of one core) | Resident memory | Physical footprint | Package idle wakeups | Interrupt wakeups |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 1 | 0.0000% | 105.61 MiB | 53.92 MiB | 0 | 0 |
+| 2 | 0.0000% | 105.59 MiB | 53.03 MiB | 0 | 0 |
+| 3 | 0.0020% | 105.59 MiB | 53.03 MiB | 0 | 1 |
+
+Measured artifact: installed release build 0.1.0 (1), built from the PR #25 integration with merged PR #24 packaging. Executable SHA-256: `f2e3950ed1247a083ef421ed6a6d56ea2d53d80a62e6c3e2b21f361d69a3c23a`.
+
+Method: native `proc_pid_rusage(RUSAGE_INFO_V0)` snapshots, actual `mach_absolute_time` intervals of 10.0051, 10.0037 and 10.0060 seconds, and `mach_timebase_info` conversion. CPU percentage is `100 × delta(user + system CPU nanoseconds) / elapsed nanoseconds`; memory is the endpoint counter divided by 1,048,576; wakeups are counter deltas. Before sampling, a temporary native probe calibrated its own converted CPU delta against `clock_gettime(CLOCK_PROCESS_CPUTIME_ID)` during a short busy interval; the ratio was 1.0000 (allowed 0.95–1.05). Process identity/start counters were checked between samples. The probe compiled with `-Wall -Wextra -Werror`; no permanent app instrumentation or sampling timer was added.
+
+This bounded authenticated observation shows no sustained CPU load, package idle wakeups or rising resident memory that warrants a runtime change. It does not establish long-term memory behavior, battery drain, helper-process energy use, sync-load cost, actual sleep/wake recovery, Start at Login registration or visual layout. No course identifiers/names, filenames, credentials, cookies, documents, raw traces or private paths are committed. Keep those remaining developer checks separate; the Keychain authorization blocker is cleared.
