@@ -285,22 +285,6 @@ final class AppStore {
     }
     func refreshLaunchAtLogin() { launchAtLoginStatus = readLaunchAtLogin() }
     var launchAtLogin: Bool { launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval }
-    func importCLI() {
-        let path = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/studip-sync/config.json")
-        struct OldConfig: Decodable {
-            struct User: Decodable { var login: String; var password: String? }
-            var user: User
-            var files_destination: String?
-        }
-        do {
-            let old = try JSONDecoder().decode(OldConfig.self, from: Data(contentsOf: path))
-            username = old.user.login; password = old.user.password ?? ""
-            if let destination = old.files_destination {
-                preferences.destination = (destination as NSString).expandingTildeInPath
-            }
-            message = "Imported locally. Sign in to verify and save in Keychain. The old configuration was not changed."
-        } catch { message = "The CLI configuration could not be imported. Enter your details instead." }
-    }
     func adoptWebSession(_ cookies: [HTTPCookie]) {
         guard !isBusy else { return }
         guard engine != nil else { message = storageError; return }

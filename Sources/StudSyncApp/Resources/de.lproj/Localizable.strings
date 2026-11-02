@@ -7,7 +7,6 @@
 "University web login…" = "Universitäts-Login öffnen …";
 "Connected" = "Verbunden";
 "Credentials stay in your Mac’s Keychain. StudSync reuses your session and attempts one re-login when it expires." = "Die Zugangsdaten bleiben im Schlüsselbund deines Macs. Nach Ablauf der Sitzung versucht StudSync einmal, sich erneut anzumelden.";
-"Import existing CLI setup…" = "Bisherige CLI-Einstellungen importieren …";
 "Choose your Finder folder" = "Finder-Ordner auswählen";
 "No folder selected" = "Kein Ordner ausgewählt";
 "Choose…" = "Auswählen …";
@@ -78,5 +77,3 @@
 "Stud.IP returned an unexpected response. Please try again later." = "Stud.IP hat eine unerwartete Antwort gesendet. Bitte versuche es später erneut.";
 "A remote file has an unsafe or unavailable destination." = "Der Zielpfad einer Datei ist unsicher oder nicht verfügbar.";
 "A download was incomplete. Your existing file was not changed." = "Ein Download war unvollständig. Deine vorhandene Datei wurde nicht verändert.";
-"Imported locally. Sign in to verify and save in Keychain. The old configuration was not changed." = "Lokal importiert. Melde dich an, um die Zugangsdaten zu prüfen und im Schlüsselbund zu speichern. Die bisherige Konfiguration wurde nicht verändert.";
-"The CLI configuration could not be imported. Enter your details instead." = "Die bisherigen Einstellungen konnten nicht importiert werden. Gib deine Zugangsdaten ein.";

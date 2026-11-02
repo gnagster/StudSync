@@ -2,7 +2,7 @@
 
 <img src="Sources/StudSyncApp/Resources/ClassicFold.png" alt="StudSync Classic Fold logo" width="128">
 
-A native macOS menu-bar app that brings Universität Göttingen Stud.IP course files into ordinary Finder folders. Personal Apple Silicon use comes first; macOS 15 or later is required. The Python CLI is retained as a regression-tested reference during migration.
+A native macOS menu-bar app that brings Universität Göttingen Stud.IP course files into ordinary Finder folders. Personal Apple Silicon use comes first; macOS 15 or later is required.
 
 ## Build and run
 
@@ -14,7 +14,7 @@ Install Xcode and select its developer directory, then:
 
 The script resolves the pinned Swift package, builds a release app, installs it at `~/Applications/StudSync.app`, signs and verifies it locally, and launches it. This stable location avoids file-provider metadata interfering with signatures in synced Documents folders and supports Start at Login. Codex's Run action uses the same command. `--build` builds/installs without launching; `--verify` launches it and verifies the process. `--logs`, `--telemetry`, and `--debug` support local diagnostics. Open `Package.swift` in Xcode for native editing/debugging.
 
-This personal build is ad-hoc signed and not notarized. No Python installation is needed to run the native app. Keep the app at its installed location after enabling Start at Login.
+This personal build is ad-hoc signed and not notarized. Keep the app at its installed location after enabling Start at Login.
 
 ## Download and install
 
@@ -26,9 +26,9 @@ The app is ad-hoc signed and not notarized. If macOS blocks the first launch, tr
 
 The first-run guide walks through university sign-in, Finder folder choice, course selection, and a final summary before starting sync. Use your university username without the email suffix. Back/Continue actions validate each step; progress, cancellation, and errors stay visible. Credentials are saved in macOS Keychain. Keychain access runs in the background so its authorization prompts cannot block the app from starting; macOS may still require your permission to read saved credentials. Cancelling immediately releases the app's login controls and discards late results, but cannot dismiss an authorization request already running inside macOS. Web login remains available; a new password save waits for the earlier Keychain request to return. The university web login is available for interactive/SSO sign-in; imported web sessions remain valid only as long as the university permits them. Settings and sync history live under `~/Library/Application Support/StudSync/`.
 
-The optional CLI import reads `~/.config/studip-sync/config.json` only after you click Import; it does not change that file. Existing files without a known baseline are preserved unless their content matches the server.
+Existing files without a known baseline are preserved unless their content matches the server.
 
-StudSync runs in the menu bar after its window closes. It defaults to hourly sync and offers manual, 15-minute, and four-hour intervals. It does not keep your Mac awake. Closing the panel does not quit the app; Quit does. Course files from selected current and previous semesters are supported; separate MediaCast/Opencast video-library synchronization is not yet part of the native client.
+StudSync runs in the menu bar after its window closes. It defaults to hourly sync and offers manual, 15-minute, and four-hour intervals. It does not keep your Mac awake. Closing the panel does not quit the app; Quit does. Course files from selected current and previous semesters are supported.
 
 Untouched files are updated atomically without retaining old copies. Locally edited files remain intact, with incoming server versions saved beside them. Remote deletion never deletes your local files. Use the menu-bar panel to see changes and reveal files in Finder.
 
@@ -41,25 +41,16 @@ If startup or sync fails offline, configured automatic sync retries when the net
 ## Verification
 
 ```sh
-python3 -m venv .venv
-.venv/bin/python -m pip install -e ".[google-tasks]"
 ./script/verify.sh
 ```
 
-Verification runs legacy Python tests (including optional Google Tasks security tests), native Swift tests, a release app build, and whitespace validation. CI runs native and reference tests plus CodeQL. Fixtures are synthetic and do not require university credentials.
+Verification runs shell workflow-helper regressions, native Swift tests, a release app build and whitespace validation. CI runs native tests/app bundling plus Swift CodeQL. Fixtures are synthetic and do not require university credentials. Install Xcode and select its developer directory; there is no separate dependency environment to prepare.
 
-Swift CodeQL runs for native/build changes and all master/weekly scans. PRs containing only known documentation or Python CLI changes keep the required Swift job but skip extraction; Python scanning still runs. Full Swift scans check that every first-party Swift source appears in the extraction archive. Resolving packages before tracing was measured at 15m57s versus an earlier 14m22s run, so that experiment was removed rather than claiming a speedup. Native PRs can still spend about 15–22 minutes in Swift CodeQL on hosted runners.
+Swift CodeQL runs for native/build changes and all master/weekly scans. PRs containing only known Markdown documentation keep the required Swift job but skip extraction. Unknown inputs, empty diffs and code renames require extraction. Full scans verify that every first-party Swift source is present in the source archive; missing/empty archives fail the check. Compiled build objects are never restored into the traced build. Hosted scans can still take about 15–22 minutes; package caching has no established end-to-end improvement.
 
-An optional live check is available with `STUDSYNC_LIVE_TEST=1 swift test --filter liveGoettingenReadOnlyCheck`. It reads the existing CLI credentials locally, signs into Göttingen, and verifies a small course-file download in a temporary location. It never runs in CI and does not change the sync destination or university files.
+The optional `STUDSYNC_LIVE_TEST=1 swift test --filter liveGoettingenReadOnlyCheck` reads the native app's Keychain entry, signs into Göttingen, and verifies current/past enrollment and a small temporary course-file download. Sign in through the app first and grant macOS Keychain access when asked. The live check never runs in CI, never prints credentials, and does not change the sync destination or university files. It may wait for OS authorization; the default suite does not read real credentials.
+
 
 ## Development
 
 See [AGENTS.md](AGENTS.md), [security policy](SECURITY.md), [roadmap](docs/ROADMAP.md), and [automation notes](docs/AUTOMATION.md). Development uses the owner's ChatGPT subscription; no OpenAI API credentials or API-billed Codex Actions are used. Automatic code review is configured in Codex repository settings, not by workflow YAML.
-
-## Existing Python CLI
-
-The original package remains usable with `pipx install git+https://github.com/gnagster/StudSync.git` and `studip-sync --init`. Its scope and runtime are separate from the native app; it will be removed after the app's current course-file synchronization is verified to work entirely in Swift without Python. Porting every legacy CLI feature or plugin is not required. The optional Google Tasks plugin is a legacy CLI feature and is not included in the native app.
-
-## Public releases
-
-Developer ID signing, notarization, signed updates, clean-machine installation testing, and wider hardware support are future milestones. See the roadmap; do not treat a local build or successful unit tests as proof that distribution or live university compatibility is complete.
