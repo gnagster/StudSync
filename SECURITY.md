@@ -1,6 +1,6 @@
 # Security policy
 
-The latest development version supports personal use with Universität Göttingen Stud.IP. There is no supported public signed release yet.
+Security support covers the latest development version and personal Apple Silicon releases for Universität Göttingen Stud.IP. App bundles are ad-hoc signed; no Apple Developer ID signing or notarization is claimed. Update archives require the project's separate Ed25519 signature.
 
 ## Review guidance
 

@@ -95,3 +95,19 @@ Master runs 41448491189 (native) and 41448493169 (Swift CodeQL) failed before st
 PR #27's first [Intel CodeQL job](https://github.com/gnagster/StudSync/actions/runs/41455737925/job/125311873966) completed successfully in 15m57s (13:45:46–14:01:43 UTC), including all nine first-party Swift sources. It used Swift 6.1.2/Xcode 16.4 and added Sparkle to the dependency graph, so it is not a controlled comparison with the earlier ARM runs. Build command to first manifest output was about 1m45s, then another 2m55s gap preceded Sparkle manifest output. The binary artifact download itself took only 2.67s; caching that artifact is not justified as a substantial speedup. Total traced build reported 585.38s. This run establishes Intel extraction coverage, not an end-to-end improvement.
 
 The same run's native ARM job was cancelled after 15 minutes with zero steps and no runner assigned, repeating the capacity failure. The follow-up changes native/release jobs to Intel too, with explicit `--arch arm64` in the shared release builder and the existing extracted-archive architecture assertion. Native tests and update fixtures execute for the runner host; released apps remain Apple Silicon only. An x86_64 unit-test build succeeded locally, but execution is blocked by this Xcode installation's arm64-only `swiftpm-testing-helper`; this is a local cross-architecture test-loader limitation, not a failed test assertion. Real Intel execution needs the next hosted run.
+
+## Long-running process follow-up
+
+The same installed process was still running on November 2 at approximately 16:57 UTC, more than four hours after its start. It had not been restarted or reconfigured by the agent. Its settings recorded a successful sync about 13 minutes earlier, so the earlier hour-old timestamp observation did not establish a persistent stall. The exact trigger (timer versus user action) was not captured. A one-second sample again found the normal AppKit event loop and no sampled Keychain read/write wait.
+
+A calibrated 30-second process-only observation gave:
+
+| Actual interval | CPU (% of one core) | Resident memory | Physical footprint | Package idle wakeups | Interrupt wakeups |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 10.0102s | 0.0065% | 42.28 MiB | 55.61 MiB | 0 | 0 |
+| 10.0023s | 0.0020% | 42.27 MiB | 55.59 MiB | 0 | 2 |
+| 10.0071s | 0.0696% | 47.84 MiB | 55.20 MiB | 0 | 3 |
+
+The CPU time-unit calibration ratio was 1.0000. Resident pages increased in the last interval while footprint decreased slightly; this bounded observation does not demonstrate a leak or sustained load. It is evidence from the existing installed pre-Sparkle artifact, not an energy measurement of the newly packaged update build. It does not establish battery life, sustained sync-load cost, an actual hourly callback, sleep/wake recovery, OS login registration or complete visual layout. No credentials, course/file names, document contents or raw traces are committed.
+
+Hosted Intel execution is now established: PR #27's native job on `c102556` passed in 7m03s, including all 51 native tests, valid/invalid/interrupted updater fixtures, arm64 packaging and malformed-bundle rejection. Swift CodeQL passed in 10m47s. Later accepted head `17d3e0e` passed both required jobs and both reviewers before the confirmed squash merge in PR #27. Individual timings remain observations rather than a controlled architecture comparison.
