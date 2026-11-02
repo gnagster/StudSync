@@ -10,8 +10,8 @@ Completed hosted runs used `macos-26`, manual `swift build`, and CodeQL action v
 | --- | ---: | ---: | ---: |
 | Full Swift job | 17m57s | 16m15s | 16m09s |
 | Build command to first fetch output | 9m20s | 7m52s | 7m51s |
-| First fetch to last resolved working copy | 18.3s | 12.9s | 17.6s |
-| Last working copy to “Building for debugging” | 6.5s | 5.2s | 6.5s |
+| First fetch to last resolved working copy | 18.3s | 12.9s | 16.8s |
+| Last working copy to “Building for debugging” | 6.5s | 5.2s | 7.3s |
 | Build-start output to build completion | 6m07s | 5m53s | 6m01s |
 
 Evidence: [PR #19 Swift job](https://github.com/gnagster/StudSync/actions/runs/41376618591/job/125058147223), [PR #20 Swift job](https://github.com/gnagster/StudSync/actions/runs/41378575155/job/125064133069), [PR #22 verbose Swift job](https://github.com/gnagster/StudSync/actions/runs/41384659213/job/125082732083). Fetch/resolution and build spans are wall-clock log intervals, not package CPU attribution.
