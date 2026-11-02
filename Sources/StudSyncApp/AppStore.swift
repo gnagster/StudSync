@@ -335,7 +335,9 @@ final class AppStore {
                 }
             } catch {
                 reportSyncFailure(error, source: source)
-                if case StudSyncError.authentication = error { message = "Finish signing into Stud.IP, then click Continue." }
+                if case StudSyncError.authentication = error {
+                    feedback[source] = Feedback(text: "Finish signing into Stud.IP, then click Continue.")
+                }
             }
         }
     }

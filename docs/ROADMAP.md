@@ -25,6 +25,8 @@ This is the developer agent's queue. Before choosing work, reconcile fresh maste
 
 PR #30's recovery writes also make the app support directory private (`0700`) before writing, including when it already exists, and retain `0600` on recovery/settings files. Its regression starts with a `0755` directory and verifies the tightened permissions.
 
+PR #30 also keeps the interactive sign-in hint in the failing operation's feedback slot, covering authentication rejected during adoption or the following catalog fetch and clearing the hint after successful sign-in. The expanded suite reports 61 native tests (live university test skipped).
+
 ## Verification baseline
 
 PR #27's accepted head `17d3e0e` completed Codex review without findings plus 👍, CodeRabbit approval without outstanding feedback, all required native/Swift/CodeRabbit checks and resolved conversations. Native CI ran the 51-test suite (opt-in university test skipped), all three real updater cases, arm64 packaging and invalid-bundle checks. Local verification also passed from a disposable clean clone. Historical SHAs record evidence only; always inspect the live PR head before any merge.

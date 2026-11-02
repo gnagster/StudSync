@@ -259,6 +259,25 @@ struct AppStoreTests {
         #expect(store.message == nil)
         #expect(!store.needsAttention)
     }
+    @Test(arguments: [false, true]) func webSignInHintIsVisibleForAdoptionAndCatalogRejection(_ catalogFailure: Bool) async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        ConnectionFixture.response = { request in
+            if catalogFailure && request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            return (401, "")
+        }
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(!store.signedIn)
+        #expect(store.message == "Finish signing into Stud.IP, then click Continue.")
+        #expect(store.needsAttention)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+    }
     @Test func manualAndPausedModesDoNotRetryOfflineStartup() async throws {
         ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
         for paused in [true, false] {
