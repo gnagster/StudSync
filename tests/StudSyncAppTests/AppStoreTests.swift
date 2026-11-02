@@ -290,6 +290,23 @@ struct AppStoreTests {
         #expect(other.message == "Unrelated failure")
         #expect(other.needsAttention)
     }
+    @Test func successfulSettingsSaveClearsOnlyItsOwnFailure() throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        let store = store(support: support)
+        let settings = support.appendingPathComponent("settings.json")
+        for previous in [nil, "Unresolved sync failure"] as [String?] {
+            store.message = previous
+            try FileManager.default.createDirectory(at: settings, withIntermediateDirectories: true)
+            #expect(!store.save())
+            #expect(store.needsAttention)
+            try FileManager.default.removeItem(at: settings)
+            #expect(store.save())
+            #expect(store.message == previous)
+            #expect(store.needsAttention == (previous != nil))
+            try FileManager.default.removeItem(at: settings)
+        }
+    }
     @Test func courseRefreshPreservesSelectionAndSyncUsesTheCurrentList() async throws {
         let store = store()
         defer { store.setPaused(true) }
@@ -432,6 +449,12 @@ struct AppStoreTests {
         store.message = "Unrelated sync failure"
         rejectChange = false
         store.setLaunchAtLogin(true)
+        #expect(store.message == "Unrelated sync failure")
+        #expect(store.needsAttention)
+        rejectChange = true
+        store.setLaunchAtLogin(false)
+        rejectChange = false
+        store.setLaunchAtLogin(false)
         #expect(store.message == "Unrelated sync failure")
         #expect(store.needsAttention)
         status = .enabled

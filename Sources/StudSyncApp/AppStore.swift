@@ -19,12 +19,14 @@ final class AppStore {
     var username = ""
     var password = ""
     var message: String? {
-        didSet { needsAttention = message != nil; messageSource = nil }
+        get { MessageSource.allCases.compactMap { feedback[$0]?.text }.first }
+        set { feedback[.operation] = newValue.map { Feedback(text: $0, needsAttention: true) } }
     }
-    private(set) var needsAttention = false
-    private enum MessageSource { case settingsLoad, launchAtLogin }
-    private var messageSource: MessageSource?
-    private var settingsFailedToLoad = false
+    var needsAttention: Bool { feedback.values.contains { $0.needsAttention } }
+    private enum MessageSource: CaseIterable { case settingsSave, settingsLoad, launchAtLogin, operation }
+    private struct Feedback { let text: String; let needsAttention: Bool }
+    // Independent failures clear only when their corresponding operation recovers.
+    private var feedback: [MessageSource: Feedback] = [:]
     var status = "Ready"
     var isBusy = false
     var paused = false
@@ -72,13 +74,13 @@ final class AppStore {
             if FileManager.default.fileExists(atPath: settingsURL.path) {
                 preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: settingsURL))
             }
-        } catch { settingsFailedToLoad = true; showError(error, source: .settingsLoad) }
+        } catch { showError(error, source: .settingsLoad) }
     }
 
     func start() {
         guard !isBusy else { return }
         guard engine != nil else { message = storageError; return }
-        guard !settingsFailedToLoad else { status = "Settings need attention"; return }
+        guard feedback[.settingsLoad] == nil else { status = "Settings need attention"; return }
         if !username.isEmpty, !password.isEmpty { connect(); return }
         let read = readCredentials
         isBusy = true; message = nil; status = "Unlocking saved credentials…"
@@ -161,10 +163,9 @@ final class AppStore {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             try JSONEncoder().encode(preferences).write(to: settingsURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
-            settingsFailedToLoad = false
-            if messageSource == .settingsLoad { message = nil }
+            feedback[.settingsLoad] = nil; feedback[.settingsSave] = nil
             return true
-        } catch { showError(error); return false }
+        } catch { showError(error, source: .settingsSave); return false }
     }
     func chooseDestination() {
         let panel = NSOpenPanel()
@@ -210,15 +211,15 @@ final class AppStore {
         retrySyncWhenOnline = canRetryConnection(error)
         showError(error)
     }
-    private func showError(_ error: Error, source: MessageSource? = nil) {
-        message = error.localizedDescription
-        messageSource = source
+    private func showError(_ error: Error, source: MessageSource = .operation) {
+        var needsAttention = true
         // Retryable server failures still need attention; only connectivity failures stay monochrome.
         if let error = error as? URLError {
             let disconnected = [.notConnectedToInternet, .networkConnectionLost].contains(error.code)
                 || (networkAvailable == false && canRetryConnection(error))
             needsAttention = !disconnected
         }
+        feedback[source] = Feedback(text: error.localizedDescription, needsAttention: needsAttention)
     }
     private func canRetryConnection(_ error: Error) -> Bool {
         if let error = error as? URLError {
@@ -301,7 +302,7 @@ final class AppStore {
         defer { refreshLaunchAtLogin() }
         do {
             try updateLaunchAtLogin(value)
-            if messageSource == .launchAtLogin { message = nil }
+            feedback[.launchAtLogin] = nil
         } catch { showError(error, source: .launchAtLogin) }
     }
     func refreshLaunchAtLogin() { launchAtLoginStatus = readLaunchAtLogin() }
