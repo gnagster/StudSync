@@ -32,6 +32,8 @@ plutil -lint "$APP/Contents/Info.plist"
 codesign --verify --deep --strict "$APP"
 require executable test -x "$APP/Contents/MacOS/StudSync"
 require icon test -s "$APP/Contents/Resources/AppIcon.icns"
+require 'Panel logo' test -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/ClassicFold.png"
+require 'Menu bar logo' test -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/MenuBarLogo.png"
 require architecture test "$(lipo -archs "$APP/Contents/MacOS/StudSync")" = arm64
 require CFBundleIdentifier test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" = com.gnagster.StudSync
 require CFBundleShortVersionString test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" = "$VERSION"

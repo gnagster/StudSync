@@ -69,7 +69,7 @@ struct SetupView: View {
 
     private var header: some View {
         HStack(spacing: 18) {
-            Image("ClassicFold", bundle: appResourceBundle)
+            Image(nsImage: AppImages.logo)
                 .resizable().scaledToFit().frame(width: 72, height: 72).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text(L(onboarding ? "Welcome to StudSync" : "Your courses, in Finder.")).font(.largeTitle.bold())

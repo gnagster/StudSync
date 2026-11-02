@@ -47,7 +47,8 @@ struct StudSyncApp: App {
         MenuBarExtra {
             StatusPanel(store: store)
         } label: {
-            Image(systemName: store.isBusy ? "arrow.triangle.2.circlepath" : (store.message == nil ? "folder.badge.arrow.down" : "exclamationmark.circle"))
+            Image(nsImage: store.needsAttention ? AppImages.menuBarError : AppImages.menuBar)
+                .renderingMode(store.needsAttention ? .original : .template)
                 .accessibilityLabel("StudSync")
         }
         .menuBarExtraStyle(.window)

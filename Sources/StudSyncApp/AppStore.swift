@@ -18,7 +18,10 @@ final class AppStore {
     var visibleCourses: [Course] { courses.filter { semesterCourseIDs?.contains($0.id) ?? true } }
     var username = ""
     var password = ""
-    var message: String?
+    var message: String? {
+        didSet { needsAttention = message != nil }
+    }
+    private(set) var needsAttention = false
     var status = "Ready"
     var isBusy = false
     var paused = false
@@ -61,12 +64,12 @@ final class AppStore {
         self.readLaunchAtLogin = readLaunchAtLogin; self.updateLaunchAtLogin = updateLaunchAtLogin
         launchAtLoginStatus = readLaunchAtLogin()
         do { engine = try SyncEngine(manifest: support.appendingPathComponent("manifest.json")) }
-        catch { storageError = error.localizedDescription; message = storageError }
+        catch { storageError = error.localizedDescription; showError(error) }
         do {
             if FileManager.default.fileExists(atPath: settingsURL.path) {
                 preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: settingsURL))
             }
-        } catch { message = error.localizedDescription }
+        } catch { showError(error) }
     }
 
     func start() {
@@ -87,7 +90,7 @@ final class AppStore {
             } catch {
                 isBusy = false
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled" }
-                else { status = "Sign-in required"; message = error.localizedDescription }
+                else { status = "Sign-in required"; showError(error) }
             }
         }
     }
@@ -118,7 +121,7 @@ final class AppStore {
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled"; return }
                 reconnectPending = canRetryConnection(error)
                 status = reconnectPending ? "Waiting for connection" : "Sign-in required"
-                message = error.localizedDescription
+                showError(error)
             }
         }
     }
@@ -155,7 +158,7 @@ final class AppStore {
             try JSONEncoder().encode(preferences).write(to: settingsURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
             return true
-        } catch { message = error.localizedDescription; return false }
+        } catch { showError(error); return false }
     }
     func chooseDestination() {
         let panel = NSOpenPanel()
@@ -199,7 +202,16 @@ final class AppStore {
             signedIn = false; reconnectPending = false; status = "Sign-in required"
         } else { status = "Sync needs attention" }
         retrySyncWhenOnline = canRetryConnection(error)
+        showError(error)
+    }
+    private func showError(_ error: Error) {
         message = error.localizedDescription
+        // Retryable server failures still need attention; only connectivity failures stay monochrome.
+        if let error = error as? URLError {
+            let disconnected = [.notConnectedToInternet, .networkConnectionLost].contains(error.code)
+                || (networkAvailable == false && canRetryConnection(error))
+            needsAttention = !disconnected
+        }
     }
     private func canRetryConnection(_ error: Error) -> Bool {
         if let error = error as? URLError {
@@ -281,7 +293,7 @@ final class AppStore {
     func setLaunchAtLogin(_ value: Bool) {
         defer { refreshLaunchAtLogin() }
         do { try updateLaunchAtLogin(value) }
-        catch { message = error.localizedDescription }
+        catch { showError(error) }
     }
     func refreshLaunchAtLogin() { launchAtLoginStatus = readLaunchAtLogin() }
     var launchAtLogin: Bool { launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval }

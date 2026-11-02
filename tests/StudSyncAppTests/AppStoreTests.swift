@@ -127,6 +127,8 @@ struct AppStoreTests {
         #expect(!store.signedIn)
         #expect(store.status == "Waiting for connection")
         #expect(store.nextSync != nil)
+        #expect(store.message != nil)
+        #expect(!store.needsAttention)
 
         // Fire the actual timer callback without waiting an hour; 401 proves a new request ran.
         ConnectionFixture.response = { _ in (401, "") }
@@ -134,6 +136,43 @@ struct AppStoreTests {
         try await waitForConnection(store)
         #expect(store.status == "Sign-in required")
         #expect(store.nextSync == nil)
+        #expect(store.needsAttention)
+    }
+    @Test func menuBarErrorStateDistinguishesOfflineFromServerAndOtherFailures() async throws {
+        let store = store()
+        defer { store.setPaused(true) }
+        store.signedIn = true
+        for code in [URLError.notConnectedToInternet, .networkConnectionLost] {
+            ConnectionFixture.response = { _ in throw URLError(code) }
+            store.sync()
+            try await waitForConnection(store)
+            #expect(store.message != nil)
+            #expect(!store.needsAttention)
+        }
+        for online in [false, true] {
+            store.networkChanged(available: online)
+            ConnectionFixture.response = { _ in throw URLError(.timedOut) }
+            store.sync()
+            try await waitForConnection(store)
+            #expect(store.needsAttention == online)
+        }
+        // A retryable HTTP failure is not proof that the Mac has no internet.
+        store.networkChanged(available: false)
+        ConnectionFixture.response = { _ in (503, "") }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { _ in throw URLError(.secureConnectionFailed) }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.status == "Up to date")
+        #expect(!store.needsAttention)
+        store.setPaused(true)
+        #expect(!store.needsAttention)
     }
     @Test func manualAndPausedModesDoNotRetryOfflineStartup() async throws {
         ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
@@ -222,6 +261,7 @@ struct AppStoreTests {
         #expect(!store.isBusy)
         #expect(store.preferences.lastSync == nil)
         #expect(store.message != nil)
+        #expect(store.needsAttention)
         #expect(store.status == "Settings need attention")
     }
     @Test func courseRefreshPreservesSelectionAndSyncUsesTheCurrentList() async throws {
@@ -244,6 +284,7 @@ struct AppStoreTests {
         #expect(store.preferences.selectedCourses == ["cc"])
         #expect(store.preferences.lastSync == nil)
         #expect(store.status == "Choose courses")
+        #expect(store.needsAttention)
     }
     @Test func refreshFailurePreservesCoursesAndRejectedSessionStopsScheduling() async throws {
         let store = store()

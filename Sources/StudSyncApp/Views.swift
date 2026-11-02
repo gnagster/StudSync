@@ -16,7 +16,7 @@ struct StatusPanel: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
-                Image("ClassicFold", bundle: appResourceBundle)
+                Image(nsImage: AppImages.logo)
                     .resizable().scaledToFit().frame(width: 32, height: 32).accessibilityHidden(true)
                 VStack(alignment: .leading) {
                     Text("StudSync").font(.headline)
