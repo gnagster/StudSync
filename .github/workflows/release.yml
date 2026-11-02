@@ -1,0 +1,38 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Require a version tag on master
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          git merge-base --is-ancestor HEAD origin/master
+      - run: swift test
+      - name: Build and verify the downloadable archive
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: ./script/package_release.sh "${RELEASE_TAG#v}" "$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/release"
+      - name: Publish release notes, archive and checksum
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" "$RUNNER_TEMP/release/StudSync-${RELEASE_TAG#v}-arm64.zip" "$RUNNER_TEMP/release/StudSync-${RELEASE_TAG#v}-arm64.zip.sha256" \
+            --verify-tag --generate-notes --title "StudSync ${RELEASE_TAG#v}" --notes-file docs/RELEASE_NOTES.md

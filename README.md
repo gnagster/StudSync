@@ -14,7 +14,13 @@ Install Xcode and select its developer directory, then:
 
 The script resolves the pinned Swift package, builds a release app, installs it at `~/Applications/StudSync.app`, signs and verifies it locally, and launches it. This stable location avoids file-provider metadata interfering with signatures in synced Documents folders and supports Start at Login. Codex's Run action uses the same command. `--build` builds/installs without launching; `--verify` launches it and verifies the process. `--logs`, `--telemetry`, and `--debug` support local diagnostics. Open `Package.swift` in Xcode for native editing/debugging.
 
-This is an ad-hoc-signed personal build, not a notarized public distribution. Keep the app at its installed location after enabling Start at Login.
+This personal build is ad-hoc signed and not notarized. Keep the app at its installed location after enabling Start at Login.
+
+## Download and install
+
+Tagged builds are published on [GitHub Releases](https://github.com/gnagster/StudSync/releases) once a release tag is created. Download the `StudSync-…-arm64.zip` asset, unzip it, and move `StudSync.app` into your Applications folder. These builds require Apple Silicon and macOS 15+. Source-code archives are not compiled apps.
+
+The app is ad-hoc signed and not notarized. If macOS blocks the first launch, try opening the app, then use System Settings → Privacy & Security → Open Anyway for StudSync and confirm. Only approve a download you trust; do not disable Gatekeeper globally. See the [installation and manual-update notes](docs/RELEASE_NOTES.md). Automatic updates remain planned. Developers can build and validate the same archive with the [release procedure](docs/RELEASING.md).
 
 ## First launch
 
