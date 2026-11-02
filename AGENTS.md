@@ -11,18 +11,29 @@ StudSync is a native Swift/SwiftUI menu-bar app for Universität Göttingen Stud
 - Keep networking/sync in StudSyncCore and presentation in StudSyncApp. Native code must not depend on Python.
 - Add focused regression tests for nontrivial changes; keep existing checks passing.
 - Never use OpenAI API credentials or API-billed Codex Actions. Use the owner's ChatGPT subscription; GitHub CI runs conventional tools only.
-- Follow `docs/ROADMAP.md`. Continue the highest-priority unfinished task, test it, and create/update a focused PR against `master`. Keep one development PR active. Development agents may merge or enable auto-merge under the review rules below.
+- Follow `docs/ROADMAP.md`. Continue the highest-priority unfinished task, test it, and create/update a focused PR against `master`. Multiple development PRs may remain open. Put independent changes in separate branches and focused PRs; coordinate overlapping changes rather than implementing the same feature twice. Follow the automatic developer cycle below when asked to start the developer.
 - Maintain `docs/ROADMAP.md` in every PR: record implemented work, remaining gaps, and relevant verification; distinguish work in an open PR from merged work. Before starting the next task, reconcile the roadmap with merged/open PRs and the code so completed or in-progress features are not implemented twice. After a PR closes, reconcile its outcome in the next development update; revert completion claims for reverted or abandoned work.
 - Do not create a separate local reviewer, security schedule, or merge bot.
 
-## Codex review comments and merging
+## Automatic developer cycle
 
-The owner authorizes development and code-review agents to fix findings, push, and merge or enable GitHub auto-merge after Codex review comments have been addressed. Inspect connected code, not only the diff. Keep fixes within the PR's scope.
+When instructed to start the automatic developer, execute this cycle in the current run; do not create or change a schedule unless explicitly requested.
 
-1. Check the latest PR head, applicable `SECURITY.md` guidance, and the Codex review bot's comments. Wait for the review of the current SHA to finish before merging or enabling auto-merge.
-2. Address every finding: either accept it, commit/push a tested fix, and identify that fix in the conversation; or reject it with a concrete reason in the conversation. Do not silently dismiss comments or resolve a conversation before its finding has been handled. Never weaken tests or security controls to hide a finding or failure.
-3. A push triggers a fresh review. Handle any new findings before enabling auto-merge; resolved conversations alone do not establish that the current SHA has been reviewed.
-4. Once the current-head review is complete and all findings are fixed or explicitly rejected, enable squash auto-merge with `gh pr merge --auto --squash --match-head-commit <reviewed-sha>` or the connected equivalent. GitHub must require passing build/test/CodeQL checks and resolved conversations before merging. If those checks already pass, merging immediately is allowed. Never use `--admin`, force-push, or bypass protections.
-5. Disable queued auto-merge before pushing further changes, then recheck review/comments for the new SHA before enabling it again.
+1. Reconcile unfinished conversation tasks with the code, open/merged PRs, issues, and roadmap. Continue still-valid unfinished work first; do not recreate completed or abandoned work. Critical correctness/security failures take priority over features. Record blockers and continue independent work rather than letting a blocked task stall the entire run.
+2. Inspect existing PRs for failed checks, conflicts, and unhandled Codex comments. Evaluate suggestions using the connected code, tests, and product scope. Accept useful findings with tested fixes, or reject unsuitable suggestions with a concrete reason in their conversations. Push fixes and leave updated PRs for the next run.
+3. Merge eligible PRs from earlier runs under the rules below. After a confirmed merge, delete its branch only if no other PR, worktree, or unfinished work depends on it. Reconcile remaining PRs with the changed master; updated heads need fresh review/checks.
+4. Address issues and maintenance needs, prioritizing bugs, security/Dependabot findings, regressions, and CI failures. Check for an existing implementation or PR before starting another fix.
+5. Develop the next clearly scoped unfinished roadmap item, test it, and create/update a focused PR. Continue with additional independently actionable items on their own branches. Do not start overlapping implementations or duplicate work already in open PRs.
+6. Maintain the roadmap and affected documentation in each PR, recording implementation, verification, open-PR versus merged status, blockers, and next steps. Save reviewable progress so another run can resume without reconstructing the conversation.
+7. Repeat from step 1 while useful actionable work and sufficient allowance remain. Stop when only external checks/reviews or required owner input remain, tools/authentication block progress, or a usage limit is reached. Preserve a clean handoff before an apparent limit. Do not busy-wait, create no-op pushes, or invent unnecessary work to consume allowance. When the roadmap is complete, maintain existing functionality and act on concrete findings rather than inventing new features.
+
+Do not overlap developer runs in the same checkout or branch. Check ownership before editing and coordinate/defer conflicting work. Multiple open PRs do not authorize simultaneous conflicting writes.
+
+## Review decisions and merging
+
+- Review comments are suggestions, not mandatory changes. Decide independently whether each improves correctness, security, or intended behavior. Record a tested fix committed/pushed to the PR or a concrete rejection reason before resolving its conversation. Never weaken tests or security controls to hide a failure.
+- Merge only an earlier-run PR whose current-head Codex review has finished, all findings are handled, required build/test/CodeQL checks pass, and required conversations are resolved. Verify the head has not changed and use `gh pr merge --squash --match-head-commit <reviewed-sha>` or the connected equivalent. Never use `--admin`, force-push, or bypass protections.
+- PRs created or updated in this run stay open until the next run even if checks finish quickly. Do not wait for CI/review to merge afterward in the same run. Do not queue auto-merge while idle; disable queued auto-merge before updating a PR. A new SHA needs fresh review/checks; resolved older conversations do not prove it was reviewed.
+- Notify only meaningful completion, persistent failure, or required owner input; stay quiet on unchanged/non-actionable state.
 
 These instructions authorize actions but do not grant platform capabilities. Development agents can handle feedback when the hosted reviewer cannot edit, push, or merge. Report unavailable authentication/tools or required owner input rather than creating no-op pushes. Do not claim success without evidence. Keep credentials and private vulnerability details out of public comments. GitHub review decisions and merging are distinct; authors cannot formally approve their own PRs.
