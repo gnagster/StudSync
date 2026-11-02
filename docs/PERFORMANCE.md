@@ -44,7 +44,7 @@ For target comparisons, use `swift build --cache-path "$bench/cache" --scratch-p
 
 The 0.55-second object-warm build skips compilation and is not a suitable CodeQL optimization. GitHub's [Swift build guidance](https://docs.github.com/en/code-security/tutorials/customize-code-scanning/prepare-code-for-analysis) recommends a clean build and warns that compilation caches can skip extraction. [Built-in dependency caching](https://docs.github.com/en/code-security/concepts/code-scanning/codeql/codeql-for-compiled-languages#about-dependency-caching-for-codeql) is documented for Java, Go and C#, not Swift. Keep the first-party source-archive check and full traced builds. Earlier package pre-resolution also failed to improve measured job time; do not repeat it as an untested speedup.
 
-The unlogged pre-fetch interval remains unexplained. Track it separately from package caching and re-evaluate after relevant toolchain/CodeQL changes or with targeted tracing; do not claim it is fixed.
+The unlogged pre-fetch interval remains unexplained. The workflow now uses `swift build --verbose` so the next traced scan exposes SwiftPM/manifest/compiler commands around that interval. This is a diagnostic change, not a claimed speedup. Inspect that next completed run before choosing another optimization; keep compilation, query scope and source-archive coverage intact.
 
 ## App startup and short process observation
 
