@@ -18,11 +18,11 @@ This is an ad-hoc-signed personal build, not a notarized public distribution. No
 
 ## First launch
 
-Sign in with your university username (without the email suffix), choose a destination, select courses, and start syncing. Credentials are saved in macOS Keychain. The university web login is available for interactive/SSO sign-in; imported web sessions remain valid only as long as the university permits them. Settings and sync history live under `~/Library/Application Support/StudSync/`.
+The first-run guide walks through university sign-in, Finder folder choice, course selection, and a final summary before starting sync. Use your university username without the email suffix. Back/Continue actions validate each step; progress, cancellation, and errors stay visible. Credentials are saved in macOS Keychain. The university web login is available for interactive/SSO sign-in; imported web sessions remain valid only as long as the university permits them. Settings and sync history live under `~/Library/Application Support/StudSync/`.
 
 The optional CLI import reads `~/.config/studip-sync/config.json` only after you click Import; it does not change that file. Existing files without a known baseline are preserved unless their content matches the server.
 
-StudSync runs in the menu bar after its window closes. It defaults to hourly sync and offers manual, 15-minute, and four-hour intervals. It does not keep your Mac awake. Closing the panel does not quit the app; Quit does. Current course files are supported; separate MediaCast/Opencast video-library synchronization is not yet part of the native client.
+StudSync runs in the menu bar after its window closes. It defaults to hourly sync and offers manual, 15-minute, and four-hour intervals. It does not keep your Mac awake. Closing the panel does not quit the app; Quit does. Course files from selected current and previous semesters are supported; separate MediaCast/Opencast video-library synchronization is not yet part of the native client.
 
 Untouched files are updated atomically without retaining old copies. Locally edited files remain intact, with incoming server versions saved beside them. Remote deletion never deletes your local files. Use the menu-bar panel to see changes and reveal files in Finder.
 
@@ -30,7 +30,7 @@ Files and folders use readable names such as `Course/Notes/lecture.pdf`. Stud.IP
 
 On upgrade, previously tracked ID-named files move to their readable paths when those destinations are free, retaining local edits and existing baselines. Only empty old folders are removed. Unknown files, occupied destinations, and older incoming conflict copies are preserved; those older paths may remain. Existing files without proven ownership are never renamed automatically. Keep the current app version after this manifest upgrade; older builds cannot read the new manifest format.
 
-If startup or sync fails offline, configured automatic sync retries when the network returns and at the selected interval. Paused/manual sync does not retry automatically, and rejected credentials require your attention. Each sync refreshes enrolled courses; Settings also offers Refresh courses without changing your selection. If none of your selected courses remain available, choose courses again rather than receiving a false “Up to date” result.
+If startup or sync fails offline, configured automatic sync retries when the network returns and at the selected interval. Paused/manual sync does not retry automatically, and rejected credentials require your attention. Each sync refreshes enrollment across all semesters. In setup/settings, browse the current semester, a previous semester, or All semesters; selections from other semesters remain active. Refreshing, reconnecting, and restarting keep selected course IDs. Select shown/Clear shown affect only the displayed semester. If none of your selected courses remain available, choose courses again rather than receiving a false “Up to date” result.
 
 ## Verification
 

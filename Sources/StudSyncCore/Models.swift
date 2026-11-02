@@ -19,6 +19,15 @@ public struct Course: Identifiable, Codable, Hashable, Sendable {
     public init(id: String, title: String) { self.id = id; self.title = title }
 }
 
+public struct Semester: Identifiable, Hashable, Sendable {
+    public var id: String
+    public var title: String
+    public var isCurrent: Bool
+    public init(id: String, title: String, isCurrent: Bool) {
+        self.id = id; self.title = title; self.isCurrent = isCurrent
+    }
+}
+
 public struct RemoteFile: Identifiable, Sendable {
     public var id: String
     public var components: [String]
