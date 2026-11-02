@@ -36,7 +36,7 @@ jobs:
           db-location: ${{ runner.temp }}/codeql_databases
       - name: Build Swift for CodeQL
         if: steps.scope.outputs.scan == 'true'
-        run: swift build
+        run: swift build --verbose
       - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
         if: steps.scope.outputs.scan == 'true'
       - name: Verify first-party Swift source coverage
