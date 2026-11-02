@@ -36,6 +36,9 @@ for key in CFBundleShortVersionString CFBundleIdentifier SUVerifyUpdateBeforeExt
     if bash "$WORK/repo/script/package_release.sh" "$VERSION" "$BUILD" "$WORK/out-$key" > "$WORK/log" 2>&1; then
         echo "Packager accepted invalid $key." >&2; exit 1
     fi
+    if ! grep -Fq "Release check failed: $key" "$WORK/log"; then
+        cat "$WORK/log" >&2; exit 1
+    fi
     if [[ -e "$WORK/out-$key/StudSync-$VERSION-arm64.zip" ]]; then
         echo 'Rejected bundle escaped into release output.' >&2; exit 1
     fi
