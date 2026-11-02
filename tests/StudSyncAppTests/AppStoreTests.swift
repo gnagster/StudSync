@@ -264,6 +264,32 @@ struct AppStoreTests {
         #expect(store.needsAttention)
         #expect(store.status == "Settings need attention")
     }
+    @Test func corruptSettingsStayVisibleAtStartupUntilSavedAndDoNotClearOtherErrors() throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        try Data("invalid settings".utf8).write(to: support.appendingPathComponent("settings.json"))
+        let store = AppStore(support: support, readCredentials: {
+            Issue.record("Startup must leave corrupt settings visible before reading credentials")
+            return nil
+        })
+        let error = store.message
+        #expect(error != nil)
+        #expect(store.needsAttention)
+        store.start()
+        #expect(!store.isBusy)
+        #expect(store.message == error)
+        #expect(store.needsAttention)
+        #expect(store.save())
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+        try Data("invalid again".utf8).write(to: support.appendingPathComponent("settings.json"))
+        let other = AppStore(support: support)
+        other.message = "Unrelated failure"
+        #expect(other.save())
+        #expect(other.message == "Unrelated failure")
+        #expect(other.needsAttention)
+    }
     @Test func courseRefreshPreservesSelectionAndSyncUsesTheCurrentList() async throws {
         let store = store()
         defer { store.setPaused(true) }
@@ -395,9 +421,19 @@ struct AppStoreTests {
         store.setLaunchAtLogin(false)
         #expect(store.launchAtLogin)
         #expect(store.message != nil)
+        #expect(store.needsAttention)
         rejectChange = false
         store.setLaunchAtLogin(false)
         #expect(!store.launchAtLogin)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+        rejectChange = true
+        store.setLaunchAtLogin(true)
+        store.message = "Unrelated sync failure"
+        rejectChange = false
+        store.setLaunchAtLogin(true)
+        #expect(store.message == "Unrelated sync failure")
+        #expect(store.needsAttention)
         status = .enabled
         store.refreshLaunchAtLogin()
         #expect(store.launchAtLogin)

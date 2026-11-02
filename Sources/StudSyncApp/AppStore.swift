@@ -19,9 +19,12 @@ final class AppStore {
     var username = ""
     var password = ""
     var message: String? {
-        didSet { needsAttention = message != nil }
+        didSet { needsAttention = message != nil; messageSource = nil }
     }
     private(set) var needsAttention = false
+    private enum MessageSource { case settingsLoad, launchAtLogin }
+    private var messageSource: MessageSource?
+    private var settingsFailedToLoad = false
     var status = "Ready"
     var isBusy = false
     var paused = false
@@ -69,12 +72,13 @@ final class AppStore {
             if FileManager.default.fileExists(atPath: settingsURL.path) {
                 preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: settingsURL))
             }
-        } catch { showError(error) }
+        } catch { settingsFailedToLoad = true; showError(error, source: .settingsLoad) }
     }
 
     func start() {
         guard !isBusy else { return }
         guard engine != nil else { message = storageError; return }
+        guard !settingsFailedToLoad else { status = "Settings need attention"; return }
         if !username.isEmpty, !password.isEmpty { connect(); return }
         let read = readCredentials
         isBusy = true; message = nil; status = "Unlocking saved credentials…"
@@ -157,6 +161,8 @@ final class AppStore {
             try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
             try JSONEncoder().encode(preferences).write(to: settingsURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
+            settingsFailedToLoad = false
+            if messageSource == .settingsLoad { message = nil }
             return true
         } catch { showError(error); return false }
     }
@@ -204,8 +210,9 @@ final class AppStore {
         retrySyncWhenOnline = canRetryConnection(error)
         showError(error)
     }
-    private func showError(_ error: Error) {
+    private func showError(_ error: Error, source: MessageSource? = nil) {
         message = error.localizedDescription
+        messageSource = source
         // Retryable server failures still need attention; only connectivity failures stay monochrome.
         if let error = error as? URLError {
             let disconnected = [.notConnectedToInternet, .networkConnectionLost].contains(error.code)
@@ -292,8 +299,10 @@ final class AppStore {
     func setPaused(_ value: Bool) { paused = value; schedule() }
     func setLaunchAtLogin(_ value: Bool) {
         defer { refreshLaunchAtLogin() }
-        do { try updateLaunchAtLogin(value) }
-        catch { showError(error) }
+        do {
+            try updateLaunchAtLogin(value)
+            if messageSource == .launchAtLogin { message = nil }
+        } catch { showError(error, source: .launchAtLogin) }
     }
     func refreshLaunchAtLogin() { launchAtLoginStatus = readLaunchAtLogin() }
     var launchAtLogin: Bool { launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval }
