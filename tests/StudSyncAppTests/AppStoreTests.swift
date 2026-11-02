@@ -44,12 +44,12 @@ private final class CredentialFixture: @unchecked Sendable {
     var writeStartedOnMain: Bool? { lock.withLock { writeOnMain } }
     func read() throws -> Credentials? {
         lock.withLock { readOnMain = Thread.isMainThread }
-        if blockRead, release.wait(timeout: .now() + 3) != .success { throw URLError(.timedOut) }
+        if blockRead, release.wait(timeout: .now() + 10) != .success { throw URLError(.timedOut) }
         return saved
     }
     func write(_ value: Credentials) throws {
         lock.withLock { writeOnMain = Thread.isMainThread }
-        if blockWrite, release.wait(timeout: .now() + 3) != .success { throw URLError(.timedOut) }
+        if blockWrite, release.wait(timeout: .now() + 10) != .success { throw URLError(.timedOut) }
         lock.withLock { credentials = value }
     }
 }
@@ -113,8 +113,8 @@ struct AppStoreTests {
             return (200, #"{"data":[]}"#)
         }
     }
-    private func waitForConnection(_ store: AppStore) async throws {
-        let deadline = Date().addingTimeInterval(3)
+    private func waitForConnection(_ store: AppStore, timeout: TimeInterval = 3) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while store.isBusy && Date() < deadline { await Task.yield() }
         try #require(!store.isBusy)
     }
@@ -494,13 +494,13 @@ struct AppStoreTests {
         #expect(store.status == "Up to date")
     }
     @Test func blockedCredentialReadDoesNotBlockTheMainActorAndCancellationDiscardsIt() async throws {
-        let vault = CredentialFixture(credentials: Credentials(username: "fixture", password: "not-real"), blockRead: true)
+        let vault = CredentialFixture(credentials: Credentials(username: "fixture", password: "not-real"), blockRead: true, blockWrite: true)
         let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ConnectionFixture.self]
         ConnectionFixture.response = { _ in Issue.record("Cancelled credentials must not start sign-in"); throw URLError(.badURL) }
         let store = AppStore(support: support, client: StudIPClient(session: URLSession(configuration: config)),
-                             readCredentials: { try vault.read() }, writeCredentials: { _ in })
-        defer { store.cancel(); vault.release.signal(); store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+                             readCredentials: { try vault.read() }, writeCredentials: { try vault.write($0) })
+        defer { store.cancel(); vault.release.signal(); vault.release.signal(); store.setPaused(true); try? FileManager.default.removeItem(at: support) }
         #expect(vault.readStartedOnMain == nil)
         #expect(store.username.isEmpty)
         store.start()
@@ -510,11 +510,26 @@ struct AppStoreTests {
         try #require(vault.readStartedOnMain == false)
         store.setPaused(true)
         #expect(store.paused)
-        store.cancel(); vault.release.signal()
-        try await waitForConnection(store)
+        store.cancel()
+        try await waitForConnection(store, timeout: 1)
         #expect(store.status == "Cancelled")
         #expect(store.username.isEmpty)
         #expect(!store.signedIn)
+        // A new login can begin before the old Keychain read returns.
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.username = "new-fixture"; store.password = "new-not-real"
+        store.connect()
+        vault.release.signal()
+        let writeDeadline = Date().addingTimeInterval(3)
+        while vault.writeStartedOnMain == nil && Date() < writeDeadline { await Task.yield() }
+        try #require(vault.writeStartedOnMain == false)
+        #expect(store.isBusy)
+        #expect(store.username == "new-fixture")
+        #expect(!store.signedIn)
+        vault.release.signal()
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(vault.saved?.username == "new-fixture")
     }
     @Test func blockedCredentialWriteDoesNotBlockTheMainActorOrCompleteCancelledLogin() async throws {
         let vault = CredentialFixture(blockWrite: true)
@@ -529,11 +544,22 @@ struct AppStoreTests {
         #expect(store.isBusy)
         store.setPaused(true)
         #expect(store.paused)
-        store.cancel(); vault.release.signal()
-        try await waitForConnection(store)
+        store.cancel()
+        try await waitForConnection(store, timeout: 1)
         #expect(store.status == "Cancelled")
         #expect(!store.signedIn)
         #expect(store.courses.isEmpty)
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.status == "Ready")
+        vault.release.signal()
+        let savedDeadline = Date().addingTimeInterval(3)
+        while vault.saved == nil && Date() < savedDeadline { await Task.yield() }
+        try #require(vault.saved != nil)
+        #expect(store.signedIn)
+        #expect(store.status == "Ready")
+        #expect(store.password.isEmpty)
     }
     @Test(arguments: [false, true]) func missingOrDeniedCredentialsStillAllowManualSignIn(_ denied: Bool) async throws {
         let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ConnectionFixture.self]

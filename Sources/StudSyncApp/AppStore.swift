@@ -1,6 +1,8 @@
 import AppKit
 import Foundation
 import Observation
+import Dispatch
+import Synchronization
 import ServiceManagement
 import StudSyncCore
 
@@ -40,6 +42,7 @@ final class AppStore {
     private let support: URL
     private let readCredentials: @Sendable () throws -> Credentials?
     private let writeCredentials: @Sendable (Credentials) throws -> Void
+    private let credentialQueue = DispatchQueue(label: "com.gnagster.StudSync.credentials")
     private let readLaunchAtLogin: () -> SMAppService.Status
     private let updateLaunchAtLogin: (Bool) throws -> Void
     private var settingsURL: URL { support.appendingPathComponent("settings.json") }
@@ -75,7 +78,7 @@ final class AppStore {
         task = Task {
             do {
                 // Keychain may wait for system authorization; keep the app's main actor free.
-                let saved = try await Task.detached(priority: .userInitiated) { try read() }.value
+                let saved = try await credentialOperation { try read() }
                 try Task.checkCancellation()
                 isBusy = false
                 guard let saved else { status = "Sign-in required"; return }
@@ -101,7 +104,7 @@ final class AppStore {
                 try await client.signIn(username: credentials.username, password: credentials.password)
                 try Task.checkCancellation()
                 let write = writeCredentials
-                try await Task.detached(priority: .userInitiated) { try write(credentials) }.value
+                try await credentialOperation { try write(credentials) }
                 try Task.checkCancellation()
                 try await loadCourseCatalog()
                 signedIn = true; status = "Ready"
@@ -118,6 +121,22 @@ final class AppStore {
                 message = error.localizedDescription
             }
         }
+    }
+    private func credentialOperation<Value: Sendable>(_ operation: @escaping @Sendable () throws -> Value) async throws -> Value {
+        try Task.checkCancellation()
+        let (stream, continuation) = AsyncThrowingStream<Value, Error>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        let cancelled = Mutex(false)
+        continuation.onTermination = { _ in cancelled.withLock { $0 = true } }
+        // Serialize writes; a cancelled older request must not finish after a newer save.
+        credentialQueue.async {
+            guard !cancelled.withLock({ $0 }) else { return }
+            do { continuation.yield(try operation()); continuation.finish() }
+            catch { continuation.finish(throwing: error) }
+        }
+        var iterator = stream.makeAsyncIterator()
+        guard let result = try await iterator.next() else { throw CancellationError() }
+        try Task.checkCancellation()
+        return result
     }
     func finishSetup() {
         guard !isBusy, canStartSync else { return }
