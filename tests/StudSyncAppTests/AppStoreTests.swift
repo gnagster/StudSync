@@ -28,6 +28,32 @@ private final class RequestCount: @unchecked Sendable {
     var total: Int { lock.withLock { value } }
 }
 
+private final class CredentialFixture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var credentials: Credentials?
+    private var readOnMain: Bool?
+    private var writeOnMain: Bool?
+    let release = DispatchSemaphore(value: 0)
+    let blockRead: Bool
+    let blockWrite: Bool
+    init(credentials: Credentials? = nil, blockRead: Bool = false, blockWrite: Bool = false) {
+        self.credentials = credentials; self.blockRead = blockRead; self.blockWrite = blockWrite
+    }
+    var saved: Credentials? { lock.withLock { credentials } }
+    var readStartedOnMain: Bool? { lock.withLock { readOnMain } }
+    var writeStartedOnMain: Bool? { lock.withLock { writeOnMain } }
+    func read() throws -> Credentials? {
+        lock.withLock { readOnMain = Thread.isMainThread }
+        if blockRead, release.wait(timeout: .now() + 10) != .success { throw URLError(.timedOut) }
+        return saved
+    }
+    func write(_ value: Credentials) throws {
+        lock.withLock { writeOnMain = Thread.isMainThread }
+        if blockWrite, release.wait(timeout: .now() + 10) != .success { throw URLError(.timedOut) }
+        lock.withLock { credentials = value }
+    }
+}
+
 private final class SemesterFixture: @unchecked Sendable {
     private let lock = NSLock()
     private var offline = false
@@ -62,7 +88,7 @@ private final class SemesterFixture: @unchecked Sendable {
 @Suite(.serialized) @MainActor
 struct AppStoreTests {
     private func store(support: URL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
-                       writeCredentials: @escaping (Credentials) throws -> Void = { _ in }) -> AppStore {
+                       writeCredentials: @escaping @Sendable (Credentials) throws -> Void = { _ in }) -> AppStore {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [ConnectionFixture.self]
         let store = AppStore(support: support,
@@ -87,8 +113,8 @@ struct AppStoreTests {
             return (200, #"{"data":[]}"#)
         }
     }
-    private func waitForConnection(_ store: AppStore) async throws {
-        let deadline = Date().addingTimeInterval(3)
+    private func waitForConnection(_ store: AppStore, timeout: TimeInterval = 3) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
         while store.isBusy && Date() < deadline { await Task.yield() }
         try #require(!store.isBusy)
     }
@@ -146,8 +172,8 @@ struct AppStoreTests {
     }
     @Test func firstRunPersistsSetupAndKeepsCredentialsOutOfSettings() async throws {
         let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        var saved: Credentials?
-        let store = store(support: support, writeCredentials: { saved = $0 })
+        let vault = CredentialFixture()
+        let store = store(support: support, writeCredentials: { try vault.write($0) })
         defer { store.setPaused(true); try? FileManager.default.removeItem(at: support) }
         store.preferences = Preferences()
         try serveCourses([Course(id: "cc", title: "First"), Course(id: "dd", title: "Second")])
@@ -156,8 +182,8 @@ struct AppStoreTests {
         #expect(store.signedIn)
         #expect(store.preferences.selectedCourses == ["cc", "dd"])
         #expect(store.password.isEmpty)
-        #expect(saved?.username == "fixture")
-        #expect(saved?.password == "not-real")
+        #expect(vault.saved?.username == "fixture")
+        #expect(vault.saved?.password == "not-real")
 
         let destination = support.appendingPathComponent("sync")
         try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: true)
@@ -169,11 +195,14 @@ struct AppStoreTests {
         #expect(store.preferences.lastSync != nil)
         #expect(store.status == "Up to date")
 
-        let restored = AppStore(support: support, readCredentials: { saved }, writeCredentials: { _ in })
+        let restored = AppStore(support: support, client: store.client, readCredentials: { vault.saved }, writeCredentials: { _ in })
         #expect(restored.preferences.setupComplete)
         #expect(restored.preferences.destination == destination.path)
         #expect(restored.preferences.selectedCourses == ["cc"])
         #expect(restored.preferences.intervalMinutes == 0)
+        #expect(restored.username.isEmpty)
+        restored.start()
+        try await waitForConnection(restored)
         #expect(restored.username == "fixture")
         let settings = support.appendingPathComponent("settings.json")
         #expect(!(try String(contentsOf: settings, encoding: .utf8)).contains("not-real"))
@@ -463,5 +492,92 @@ struct AppStoreTests {
         store.runScheduledSync()
         try await waitForConnection(store)
         #expect(store.status == "Up to date")
+    }
+    @Test func blockedCredentialReadDoesNotBlockTheMainActorAndCancellationDiscardsIt() async throws {
+        let vault = CredentialFixture(credentials: Credentials(username: "fixture", password: "not-real"), blockRead: true, blockWrite: true)
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ConnectionFixture.self]
+        ConnectionFixture.response = { _ in Issue.record("Cancelled credentials must not start sign-in"); throw URLError(.badURL) }
+        let store = AppStore(support: support, client: StudIPClient(session: URLSession(configuration: config)),
+                             readCredentials: { try vault.read() }, writeCredentials: { try vault.write($0) })
+        defer { store.cancel(); vault.release.signal(); vault.release.signal(); store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+        #expect(vault.readStartedOnMain == nil)
+        #expect(store.username.isEmpty)
+        store.start()
+        #expect(store.isBusy)
+        let deadline = Date().addingTimeInterval(3)
+        while vault.readStartedOnMain == nil && Date() < deadline { await Task.yield() }
+        try #require(vault.readStartedOnMain == false)
+        store.setPaused(true)
+        #expect(store.paused)
+        store.cancel()
+        try await waitForConnection(store, timeout: 1)
+        #expect(store.status == "Cancelled")
+        #expect(store.username.isEmpty)
+        #expect(!store.signedIn)
+        // A new login can begin before the old Keychain read returns.
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.username = "new-fixture"; store.password = "new-not-real"
+        store.connect()
+        vault.release.signal()
+        let writeDeadline = Date().addingTimeInterval(3)
+        while vault.writeStartedOnMain == nil && Date() < writeDeadline { await Task.yield() }
+        try #require(vault.writeStartedOnMain == false)
+        #expect(store.isBusy)
+        #expect(store.username == "new-fixture")
+        #expect(!store.signedIn)
+        vault.release.signal()
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(vault.saved?.username == "new-fixture")
+    }
+    @Test func blockedCredentialWriteDoesNotBlockTheMainActorOrCompleteCancelledLogin() async throws {
+        let vault = CredentialFixture(blockWrite: true)
+        let store = store(writeCredentials: { try vault.write($0) })
+        defer { store.cancel(); vault.release.signal(); store.setPaused(true) }
+        store.preferences.setupComplete = false
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.connect()
+        let deadline = Date().addingTimeInterval(3)
+        while vault.writeStartedOnMain == nil && Date() < deadline { await Task.yield() }
+        try #require(vault.writeStartedOnMain == false)
+        #expect(store.isBusy)
+        store.setPaused(true)
+        #expect(store.paused)
+        store.cancel()
+        try await waitForConnection(store, timeout: 1)
+        #expect(store.status == "Cancelled")
+        #expect(!store.signedIn)
+        #expect(store.courses.isEmpty)
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.status == "Ready")
+        vault.release.signal()
+        let savedDeadline = Date().addingTimeInterval(3)
+        while vault.saved == nil && Date() < savedDeadline { await Task.yield() }
+        try #require(vault.saved != nil)
+        #expect(store.signedIn)
+        #expect(store.status == "Ready")
+        #expect(store.password.isEmpty)
+    }
+    @Test(arguments: [false, true]) func missingOrDeniedCredentialsStillAllowManualSignIn(_ denied: Bool) async throws {
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ConnectionFixture.self]
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = AppStore(support: support, client: StudIPClient(session: URLSession(configuration: config)), readCredentials: {
+            if denied { throw NSError(domain: "fixture.Keychain", code: 1) }
+            return nil
+        }, writeCredentials: { _ in })
+        defer { store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+        store.start()
+        try await waitForConnection(store)
+        #expect(store.status == "Sign-in required")
+        #expect((store.message != nil) == denied)
+        store.username = "fixture"; store.password = "not-real"
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.connect()
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.message == nil)
     }
 }
