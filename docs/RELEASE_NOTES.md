@@ -1,0 +1,7 @@
+StudSync syncs Universität Göttingen Stud.IP course files into ordinary Finder folders. This build requires an Apple Silicon Mac with macOS 15 or newer.
+
+Download the `StudSync-…-arm64.zip` asset below, unzip it, and move `StudSync.app` into your Applications folder. Source-code archives are not ready-to-run apps. The matching `.sha256` file lets you verify the downloaded archive with `shasum -a 256 -c StudSync-…-arm64.zip.sha256` in the download directory.
+
+This personal distribution is ad-hoc signed and is not notarized or signed with an Apple Developer ID. macOS may refuse the first launch. After trying to open the app, use System Settings → Privacy & Security → Open Anyway for StudSync, then confirm opening it. Only do this for a download you trust. See [Apple's instructions](https://support.apple.com/guide/mac-help/open-an-app-by-overriding-security-settings-mh40617/mac). Do not disable Gatekeeper globally.
+
+The first-run guide walks through sign-in, a Finder destination and course selection. Later launches use the menu-bar icon. Automatic updates are not included yet; to update, quit StudSync and replace the app at the same location. Keep your sync folder and application data; do not delete them during an update. Ad-hoc app updates may require renewed Keychain authorization.
