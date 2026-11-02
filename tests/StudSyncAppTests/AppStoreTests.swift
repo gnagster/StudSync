@@ -219,6 +219,46 @@ struct AppStoreTests {
         #expect(store.message == nil)
         #expect(!store.needsAttention)
     }
+    @Test func actionableCatalogFeedbackTakesPriorityOverAnOfflineSyncMessage() async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.signedIn = true
+        ConnectionFixture.response = { _ in throw URLError(.secureConnectionFailed) }
+        store.refreshCourses()
+        try await waitForConnection(store)
+        let catalogError = store.message
+        ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        #expect(store.message == catalogError)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.refreshCourses()
+        try await waitForConnection(store)
+        #expect(!store.needsAttention)
+        #expect(store.message != nil) // Offline feedback remains until the next successful sync.
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+    }
+    @Test func refreshingCatalogAfterWebAdoptionClearsItsFailure() async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.message = "Old sign-in failure"
+        ConnectionFixture.response = { request in
+            if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            return (503, "")
+        }
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.needsAttention)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.refreshCourses()
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+    }
     @Test func manualAndPausedModesDoNotRetryOfflineStartup() async throws {
         ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
         for paused in [true, false] {

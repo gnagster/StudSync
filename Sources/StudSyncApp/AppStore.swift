@@ -19,16 +19,22 @@ final class AppStore {
     var username = ""
     var password = ""
     var message: String? {
-        get { MessageSource.allCases.compactMap { feedback[$0]?.text }.first }
+        get {
+            let entries = MessageSource.allCases.compactMap { feedback[$0] }
+            return (entries.first(where: requiresAttention) ?? entries.first)?.text
+        }
         set { feedback[.operation] = newValue.map { Feedback(text: $0) } }
     }
     var needsAttention: Bool {
-        feedback.values.contains { !$0.isOffline && !($0.isTransportFailure && networkAvailable == false) }
+        feedback.values.contains(where: requiresAttention)
     }
     private enum MessageSource: CaseIterable { case settingsSave, settingsLoad, launchAtLogin, sync, catalog, operation }
     private struct Feedback { let text: String; var isOffline = false; var isTransportFailure = false }
     // Independent failures clear only when their corresponding operation recovers.
     private var feedback: [MessageSource: Feedback] = [:]
+    private func requiresAttention(_ entry: Feedback) -> Bool {
+        !entry.isOffline && !(entry.isTransportFailure && networkAvailable == false)
+    }
     var status = "Ready"
     var isBusy = false
     var paused = false
@@ -315,17 +321,19 @@ final class AppStore {
         guard engine != nil else { message = storageError; return }
         isBusy = true
         task = Task {
+            var source = MessageSource.operation
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
             do {
                 try await client.adopt(cookies: cookies)
                 signedIn = true; reconnectPending = false; password = ""; showWebLogin = false
+                message = nil; source = .catalog
                 try await loadCourseCatalog()
                 status = "Ready"; message = nil; feedback[.catalog] = nil
                 if !preferences.setupComplete && preferences.selectedCourses.isEmpty {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
             } catch {
-                reportSyncFailure(error, source: .operation)
+                reportSyncFailure(error, source: source)
                 if case StudSyncError.authentication = error { message = "Finish signing into Stud.IP, then click Continue." }
             }
         }
