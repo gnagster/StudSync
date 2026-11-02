@@ -9,6 +9,11 @@ final class AppStore {
     static let shared = AppStore()
     var preferences = Preferences()
     var courses: [Course] = []
+    var semesters: [Semester] = []
+    private(set) var semesterID = ""
+    private var semesterCourseIDs: Set<String>?
+    private var catalogLoaded = false
+    var visibleCourses: [Course] { courses.filter { semesterCourseIDs?.contains($0.id) ?? true } }
     var username = ""
     var password = ""
     var message: String?
@@ -77,10 +82,10 @@ final class AppStore {
             do {
                 try await client.signIn(username: credentials.username, password: credentials.password)
                 try writeCredentials(credentials)
-                courses = try await client.courses()
+                try await loadCourseCatalog()
                 signedIn = true; status = "Ready"
                 if preferences.selectedCourses.isEmpty && !preferences.setupComplete {
-                    preferences.selectedCourses = Set(courses.map(\.id))
+                    preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
                 password = ""
                 syncOnSuccess = preferences.setupComplete
@@ -114,7 +119,7 @@ final class AppStore {
     func chooseDestination() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
-        panel.prompt = "Choose sync folder"
+        panel.prompt = L("Choose sync folder")
         if panel.runModal() == .OK, let url = panel.url {
             preferences.destination = url.path; save()
         }
@@ -126,13 +131,24 @@ final class AppStore {
     }
     var canStartSync: Bool { signedIn && !paused && !preferences.destination.isEmpty && !preferences.selectedCourses.isEmpty }
     var canSync: Bool { canStartSync && preferences.setupComplete }
-    func refreshCourses() {
+    private func loadCourseCatalog(semesterID requested: String? = nil) async throws {
+        let enrollment = try await client.courses()
+        let terms = try await client.semesters()
+        let preferred = requested ?? (catalogLoaded ? semesterID : terms.first(where: \.isCurrent)?.id ?? "")
+        let selected = preferred.isEmpty || terms.contains(where: { $0.id == preferred }) ? preferred : ""
+        let visible = selected.isEmpty ? enrollment : try await client.courses(semesterID: selected)
+        try Task.checkCancellation()
+        courses = enrollment; semesters = terms; semesterID = selected
+        semesterCourseIDs = selected.isEmpty ? nil : Set(visible.map(\.id))
+        catalogLoaded = true
+    }
+    func refreshCourses(semesterID: String? = nil) {
         guard !isBusy, signedIn else { return }
         retrySyncWhenOnline = false
         isBusy = true; message = nil; status = "Loading courses…"
         task = Task {
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
-            do { courses = try await client.courses(); status = "Ready" }
+            do { try await loadCourseCatalog(semesterID: semesterID); status = "Ready" }
             catch { reportSyncFailure(error) }
         }
     }
@@ -249,15 +265,19 @@ final class AppStore {
         guard engine != nil else { message = storageError; return }
         isBusy = true
         task = Task {
-            defer { isBusy = false }
+            defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
             do {
                 try await client.adopt(cookies: cookies)
-                courses = try await client.courses()
-                signedIn = true; showWebLogin = false; status = "Ready"; message = nil
-                reconnectPending = false
-                if !preferences.setupComplete { preferences.selectedCourses = Set(courses.map(\.id)) }
-                schedule()
-            } catch { message = "Finish signing into Stud.IP, then click Continue." }
+                signedIn = true; reconnectPending = false; password = ""; showWebLogin = false
+                try await loadCourseCatalog()
+                status = "Ready"; message = nil
+                if !preferences.setupComplete && preferences.selectedCourses.isEmpty {
+                    preferences.selectedCourses = Set(visibleCourses.map(\.id))
+                }
+            } catch {
+                reportSyncFailure(error)
+                if case StudSyncError.authentication = error { message = "Finish signing into Stud.IP, then click Continue." }
+            }
         }
     }
 }

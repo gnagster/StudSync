@@ -29,8 +29,10 @@ private struct Page<A: Decodable & Sendable>: Decodable, Sendable {
 }
 private struct CourseAttributes: Decodable, Sendable { var title: String }
 private struct SemesterAttributes: Decodable, Sendable {
+    var title: String?
+    var start: String?
     var current: Bool
-    enum CodingKeys: String, CodingKey { case current = "is-current" }
+    enum CodingKeys: String, CodingKey { case title, start; case current = "is-current" }
 }
 private struct FolderAttributes: Decodable, Sendable { var name: String }
 private struct FileAttributes: Decodable, Sendable {
@@ -101,6 +103,7 @@ public actor StudIPClient {
     }
 
     public func adopt(cookies: [HTTPCookie]) async throws {
+        signOut()
         for cookie in cookies where cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: ".")) == Self.origin.host {
             session.configuration.httpCookieStorage?.setCookie(cookie)
         }
@@ -153,11 +156,17 @@ public actor StudIPClient {
         return items
     }
 
-    public func courses() async throws -> [Course] {
+    public func semesters() async throws -> [Semester] {
+        let semesters = try await list("semesters", as: SemesterAttributes.self)
+        return semesters.sorted { ($0.attributes.start ?? "") > ($1.attributes.start ?? "") }
+            .map { Semester(id: $0.id, title: $0.attributes.title ?? $0.id, isCurrent: $0.attributes.current) }
+    }
+
+    public func courses(semesterID: String? = nil) async throws -> [Course] {
+        if let semesterID { try SafePath.validateRemoteID(semesterID) }
         struct Me: Decodable { var data: Reference }
         let me = try JSONDecoder().decode(Me.self, from: await apiData("users/me"))
-        let semesters = try await list("semesters", as: SemesterAttributes.self)
-        let filter = semesters.first(where: { $0.attributes.current }).map { "?filter[semester]=\($0.id)" } ?? ""
+        let filter = semesterID.map { "?filter[semester]=\($0)" } ?? ""
         let courses = try await list("users/\(me.data.id)/courses" + filter, as: CourseAttributes.self)
         return courses.map { Course(id: $0.id, title: $0.attributes.title) }.sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
     }
