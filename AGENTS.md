@@ -15,6 +15,7 @@ StudSync is a native Swift/SwiftUI menu-bar app for Universität Göttingen Stud
 - Maintain `docs/ROADMAP.md` in every PR: record implemented work, remaining gaps, and relevant verification; distinguish work in an open PR from merged work. Before starting the next task, reconcile the roadmap with merged/open PRs and the code so completed or in-progress features are not implemented twice. After a PR closes, reconcile its outcome in the next development update; revert completion claims for reverted or abandoned work.
 - Use the existing Codex review and owner-installed CodeRabbit integrations. Do not create another reviewer, security schedule, custom status publisher, or merge bot.
 - Batch related roadmap changes and finish local verification before pushing to save CI runs. Independent changes still need separate branches when bundling would obscure their review. Known Markdown-only changes skip native builds and CodeQL through the shared change-scope job; never bypass checks for executable, resource, dependency or workflow changes.
+- After reviewed app/runtime-dependency changes merge and master passes CI, publish the next appropriate app version under `docs/RELEASING.md`. Documentation-only changes need no release. Verify the hosted archive and signed feed; if build/signing/publication fails, keep any draft unpublished and report the blocker.
 
 ## Roadmap reconciliation and ownership
 
