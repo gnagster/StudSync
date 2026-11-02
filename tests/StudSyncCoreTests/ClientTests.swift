@@ -210,14 +210,9 @@ struct ClientTests {
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["STUDSYNC_LIVE_TEST"] == "1"))
 func liveGoettingenReadOnlyCheck() async throws {
-    struct Config: Decodable {
-        struct User: Decodable { var login: String; var password: String }
-        var user: User
-    }
-    let file = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".config/studip-sync/config.json")
-    let config = try JSONDecoder().decode(Config.self, from: Data(contentsOf: file))
+    guard let credentials = try CredentialVault.read() else { throw StudSyncError.authentication }
     let client = StudIPClient()
-    try await client.signIn(username: config.user.login, password: config.user.password)
+    try await client.signIn(username: credentials.username, password: credentials.password)
     let courses = try await client.courses()
     let terms = try await client.semesters()
     let currentTerm = terms.first(where: { $0.isCurrent })

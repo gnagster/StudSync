@@ -1,6 +1,6 @@
 # StudSync agent instructions
 
-StudSync is a native Swift/SwiftUI menu-bar app for Universität Göttingen Stud.IP files in ordinary Finder folders. Personal Apple Silicon use comes first. Python remains a tested reference during migration.
+StudSync is a native Swift/SwiftUI menu-bar app for Universität Göttingen Stud.IP files in ordinary Finder folders. Personal Apple Silicon use comes first.
 
 ## Development
 
@@ -8,7 +8,7 @@ StudSync is a native Swift/SwiftUI menu-bar app for Universität Göttingen Stud
 - Use the Build macOS Apps skills for native work and GitHub tools or `gh` for repository operations.
 - Read `SECURITY.md` for authentication, networking, files, persistence, and workflow changes.
 - Build/run: `./script/build_and_run.sh`. Verify: `./script/verify.sh`.
-- Keep networking/sync in StudSyncCore and presentation in StudSyncApp. Native code must not depend on Python.
+- Keep networking/sync in StudSyncCore and presentation in StudSyncApp. Keep the app and its build/test tooling native; do not invoke an external interpreter.
 - Add focused regression tests for nontrivial changes; keep existing checks passing.
 - Never use OpenAI API credentials or API-billed Codex Actions. Use the owner's ChatGPT subscription; GitHub CI runs conventional tools only.
 - Follow `docs/ROADMAP.md`. Continue the highest-priority unfinished task, test it, and create/update a focused PR against `master`. Multiple development PRs may remain open. Put independent changes in separate branches and focused PRs; coordinate overlapping changes rather than implementing the same feature twice. Follow the automatic developer cycle below when asked to start the developer.

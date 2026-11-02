@@ -115,7 +115,6 @@ struct SetupView: View {
             }
             Text(L("Credentials stay in your Mac’s Keychain. StudSync reuses your session and attempts one re-login when it expires."))
                 .font(.caption).foregroundStyle(.secondary)
-            if onboarding { Button(L("Import existing CLI setup…")) { store.importCLI() }.font(.caption).disabled(store.isBusy) }
         }
     }
 
