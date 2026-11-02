@@ -168,7 +168,8 @@ final class AppStore {
     }
     @discardableResult func save() -> Bool {
         do {
-            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: support.path)
             if feedback[.settingsLoad] != nil {
                 let backup = support.appendingPathComponent("settings-recovery-\(UUID().uuidString).json")
                 try Data(contentsOf: settingsURL).write(to: backup, options: .atomic)

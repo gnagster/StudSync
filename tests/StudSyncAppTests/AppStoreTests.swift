@@ -354,6 +354,7 @@ struct AppStoreTests {
         defer { try? FileManager.default.removeItem(at: support) }
         try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
         try Data("invalid settings".utf8).write(to: support.appendingPathComponent("settings.json"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: support.path)
         let store = AppStore(support: support, readCredentials: {
             Issue.record("Startup must leave corrupt settings visible before reading credentials")
             return nil
@@ -368,6 +369,7 @@ struct AppStoreTests {
         #expect(store.save())
         #expect(store.message == nil)
         #expect(!store.needsAttention)
+        #expect(try FileManager.default.attributesOfItem(atPath: support.path)[.posixPermissions] as? Int == 0o700)
         let backups = try FileManager.default.contentsOfDirectory(at: support, includingPropertiesForKeys: nil)
             .filter { $0.lastPathComponent.hasPrefix("settings-recovery-") }
         #expect(backups.count == 1)
