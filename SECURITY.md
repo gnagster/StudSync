@@ -14,6 +14,7 @@ Automatic review must inspect security and correctness and follow the repair/pus
 - Retry authentication once after expiry; stop on rejected credentials or required interaction.
 - Keep workflow permissions minimal. Use synthetic public fixtures; never execute untrusted PR scripts with private credentials.
 - Do not add OpenAI API credentials to workflows or scheduled work.
+- App updates use the HTTPS GitHub appcast and the pinned Sparkle Ed25519 public key in `config/Updates.plist`. Verify archive signatures before extraction. Preserve Sparkle's vendor signatures when packaging; ad-hoc app signing does not replace archive authentication. Never export the production update key from the owner's Keychain or put it in CI. Publish only a verified signed appcast; keep failed or unsigned release drafts unpublished. Test with independent disposable fixture keys, never real credentials or the production signing key.
 
 ## Reporting
 

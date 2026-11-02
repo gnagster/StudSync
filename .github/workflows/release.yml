@@ -10,6 +10,7 @@ concurrency:
 jobs:
   release:
     runs-on: macos-26
+    timeout-minutes: 20
     permissions:
       contents: write
     steps:
@@ -35,4 +36,4 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
           gh release create "$RELEASE_TAG" "$RUNNER_TEMP/release/StudSync-${RELEASE_TAG#v}-arm64.zip" "$RUNNER_TEMP/release/StudSync-${RELEASE_TAG#v}-arm64.zip.sha256" \
-            --verify-tag --generate-notes --title "StudSync ${RELEASE_TAG#v}" --notes-file docs/RELEASE_NOTES.md
+            --draft --verify-tag --generate-notes --title "StudSync ${RELEASE_TAG#v}" --notes-file docs/RELEASE_NOTES.md

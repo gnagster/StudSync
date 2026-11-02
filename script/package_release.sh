@@ -32,7 +32,14 @@ codesign --verify --deep --strict "$APP"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" == 15.0 ]]
 [[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/en.lproj/Localizable.strings" ]]
 [[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/de.lproj/Localizable.strings" ]]
-for license in StudSync SwiftSoup LRUCache SwiftAtomics; do
+[[ -x "$APP/Contents/Frameworks/Sparkle.framework/Sparkle" ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" == https://github.com/gnagster/StudSync/releases/latest/download/appcast.xml ]]
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" == "$(plutil -extract SUPublicEDKey raw -o - config/Updates.plist)" ]]
+[[ "$(plutil -extract SUVerifyUpdateBeforeExtraction raw -o - "$APP/Contents/Info.plist")" == true ]]
+[[ "$(plutil -extract SUEnableAutomaticChecks raw -o - "$APP/Contents/Info.plist")" == false ]]
+[[ "$(plutil -extract SUAutomaticallyUpdate raw -o - "$APP/Contents/Info.plist")" == false ]]
+otool -L "$APP/Contents/MacOS/StudSync" | grep -Fq '@rpath/Sparkle.framework/Versions/B/Sparkle'
+for license in StudSync SwiftSoup LRUCache SwiftAtomics Sparkle; do
     [[ -s "$APP/Contents/Resources/Licenses/$license.txt" ]]
 done
 mv "$STAGING/$NAME" "$OUT/$NAME"

@@ -12,6 +12,7 @@ func L(_ key: String) -> String {
 
 struct StatusPanel: View {
     @Bindable var store: AppStore
+    private var updates: AppUpdates { .shared }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
@@ -69,6 +70,7 @@ struct StatusPanel: View {
                 }
             }
             Divider()
+            Button(L("Check for Updates…")) { updates.check() }.disabled(!updates.canCheck)
             HStack {
                 Button(L(store.preferences.setupComplete ? "Settings…" : "Set up StudSync…")) { AppWindows.show(store) }
                 Spacer()

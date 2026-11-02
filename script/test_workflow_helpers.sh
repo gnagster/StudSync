@@ -24,8 +24,17 @@ GITHUB_EVENT_NAME=push GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_
 grep -Fxq 'scan=true' "$scratch/output"
 echo 'Updated' >> README.md
 echo 'Notes' > 'docs/Überblick notes.md'
+echo 'Agent instructions' > AGENTS.md
+echo 'Security instructions' > SECURITY.md
 git add .; git commit -qm docs
 scope false
+: > "$scratch/output"
+GITHUB_EVENT_NAME=push STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
+grep -Fxq 'scan=false' "$scratch/output"
+echo 'Bundled resource' > Sources/help.md
+git add .; git commit -qm resource
+scope true
+git rm -q Sources/help.md; git commit -qm remove-resource
 echo 'Unknown input' > 'unknown input'
 git add .; git commit -qm input
 scope true

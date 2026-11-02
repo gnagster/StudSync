@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+<key>SUFeedURL</key><string>https://github.com/gnagster/StudSync/releases/latest/download/appcast.xml</string>
+<key>SUPublicEDKey</key><string>IMC1/axO7nQHpvkZgB24PXBkO2bISOFaYa9e/W1j9sE=</string>
+<key>SUVerifyUpdateBeforeExtraction</key><true/>
+<key>SUEnableAutomaticChecks</key><false/>
+<key>SUAutomaticallyUpdate</key><false/>
+</dict></plist>

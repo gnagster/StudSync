@@ -14,12 +14,23 @@ StudSync is a native Swift/SwiftUI menu-bar app for Universität Göttingen Stud
 - Follow `docs/ROADMAP.md`. Continue the highest-priority unfinished task, test it, and create/update a focused PR against `master`. Multiple development PRs may remain open. Put independent changes in separate branches and focused PRs; coordinate overlapping changes rather than implementing the same feature twice. Follow the automatic developer cycle below when asked to start the developer.
 - Maintain `docs/ROADMAP.md` in every PR: record implemented work, remaining gaps, and relevant verification; distinguish work in an open PR from merged work. Before starting the next task, reconcile the roadmap with merged/open PRs and the code so completed or in-progress features are not implemented twice. After a PR closes, reconcile its outcome in the next development update; revert completion claims for reverted or abandoned work.
 - Do not create a separate local reviewer, security schedule, or merge bot.
+- Batch related roadmap changes and finish local verification before pushing to save CI runs. Independent changes still need separate branches when bundling would obscure their review. Known Markdown-only changes skip native builds and CodeQL through the shared change-scope job; never bypass checks for executable, resource, dependency or workflow changes.
+
+## Roadmap reconciliation and ownership
+
+Before choosing a roadmap task, and again after merging a PR:
+
+1. Refresh remote refs with `git fetch --prune origin` and read `origin/master:docs/ROADMAP.md` as the merged baseline. A checked-out branch's roadmap can be older or contain unmerged claims; never use it alone.
+2. Overlay open PRs by inspecting their descriptions, changed files and relevant diffs/code. Match actual scope to roadmap items. An open implementation reserves its scope: continue that PR or choose independent work instead of duplicating it.
+3. List local/remote branches and worktrees. For plausible overlapping work without an open PR, inspect its diff, uncommitted work and handoff, and check merged/closed PR history. A branch name alone proves neither active work nor completion; old branches can survive squash merges. Do not overwrite or discard work to resolve uncertainty. Record the uncertainty and defer overlapping work while continuing independent tasks.
+4. Record each queued item's status as **Planned**, **In progress**, or **Merged**, with its PR link or, before a PR exists, its branch/worktree and next step. Mark only surviving merged scope as Merged; keep unimplemented portions Planned. Reconcile reverted/abandoned work with the actual code before reopening it.
+5. Reconcile roadmap conflicts from that baseline, PR outcomes and code rather than blindly combining checkboxes from different branches. Update the roadmap in the focused PR. If remote/PR information is unavailable, report the missing evidence and do not assume an overlapping task is free.
 
 ## Automatic developer cycle
 
 When instructed to start the automatic developer, execute this cycle in the current run; do not create or change a schedule unless explicitly requested.
 
-1. Reconcile unfinished conversation tasks with the code, open/merged PRs, issues, and roadmap. Continue still-valid unfinished work first; do not recreate completed or abandoned work. Critical correctness/security failures take priority over features. Record blockers and continue independent work rather than letting a blocked task stall the entire run.
+1. Apply the roadmap reconciliation and ownership procedure above, then reconcile unfinished conversation tasks with that combined state and issues. Continue still-valid unfinished work first; do not recreate completed or abandoned work. Critical correctness/security failures take priority over features. Record blockers and continue independent work rather than letting a blocked task stall the entire run.
 2. Inspect existing PRs for failed checks, conflicts, and unhandled Codex comments. Evaluate suggestions using the connected code, tests, and product scope. Accept useful findings with tested fixes, or reject unsuitable suggestions with a concrete reason in their conversations. Push fixes and leave updated PRs for the next run.
 3. Merge eligible PRs from earlier runs under the rules below. After a confirmed merge, delete its branch only if no other PR, worktree, or unfinished work depends on it. Reconcile remaining PRs with the changed master; updated heads need fresh review/checks.
 4. Address issues and maintenance needs, prioritizing bugs, security/Dependabot findings, regressions, and CI failures. Check for an existing implementation or PR before starting another fix.
