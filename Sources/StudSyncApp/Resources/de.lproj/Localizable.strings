@@ -40,6 +40,7 @@
 "Resume" = "Fortsetzen";
 "Ready" = "Bereit";
 "Signing in…" = "Anmeldung läuft …";
+"Unlocking saved credentials…" = "Gespeicherte Zugangsdaten werden entsperrt …";
 "Sign-in required" = "Anmeldung erforderlich";
 "Waiting for connection" = "Warten auf Verbindung";
 "Checking courses…" = "Kurse werden geprüft …";

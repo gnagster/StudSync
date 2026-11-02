@@ -38,22 +38,23 @@ final class AppStore {
     private var networkAvailable: Bool?
     private var networkRecoveryPending = false
     private let support: URL
-    private let writeCredentials: (Credentials) throws -> Void
+    private let readCredentials: @Sendable () throws -> Credentials?
+    private let writeCredentials: @Sendable (Credentials) throws -> Void
     private let readLaunchAtLogin: () -> SMAppService.Status
     private let updateLaunchAtLogin: (Bool) throws -> Void
     private var settingsURL: URL { support.appendingPathComponent("settings.json") }
 
     init(support: URL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("StudSync"),
          client: StudIPClient = StudIPClient(),
-         readCredentials: () throws -> Credentials? = CredentialVault.read,
-         writeCredentials: @escaping (Credentials) throws -> Void = CredentialVault.save,
+         readCredentials: @escaping @Sendable () throws -> Credentials? = { try CredentialVault.read() },
+         writeCredentials: @escaping @Sendable (Credentials) throws -> Void = { try CredentialVault.save($0) },
          readLaunchAtLogin: @escaping () -> SMAppService.Status = { SMAppService.mainApp.status },
          updateLaunchAtLogin: @escaping (Bool) throws -> Void = { enabled in
              if enabled { try SMAppService.mainApp.register() }
              else { try SMAppService.mainApp.unregister() }
          }) {
         self.support = support; self.client = client
-        self.writeCredentials = writeCredentials
+        self.readCredentials = readCredentials; self.writeCredentials = writeCredentials
         self.readLaunchAtLogin = readLaunchAtLogin; self.updateLaunchAtLogin = updateLaunchAtLogin
         launchAtLoginStatus = readLaunchAtLogin()
         do { engine = try SyncEngine(manifest: support.appendingPathComponent("manifest.json")) }
@@ -62,13 +63,30 @@ final class AppStore {
             if FileManager.default.fileExists(atPath: settingsURL.path) {
                 preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: settingsURL))
             }
-            if let saved = try readCredentials() { username = saved.username; password = saved.password }
         } catch { message = error.localizedDescription }
     }
 
     func start() {
-        guard !username.isEmpty, !password.isEmpty else { return }
-        connect()
+        guard !isBusy else { return }
+        guard engine != nil else { message = storageError; return }
+        if !username.isEmpty, !password.isEmpty { connect(); return }
+        let read = readCredentials
+        isBusy = true; message = nil; status = "Unlocking saved credentials…"
+        task = Task {
+            do {
+                // Keychain may wait for system authorization; keep the app's main actor free.
+                let saved = try await Task.detached(priority: .userInitiated) { try read() }.value
+                try Task.checkCancellation()
+                isBusy = false
+                guard let saved else { status = "Sign-in required"; return }
+                username = saved.username; password = saved.password
+                connect()
+            } catch {
+                isBusy = false
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled" }
+                else { status = "Sign-in required"; message = error.localizedDescription }
+            }
+        }
     }
     func connect() {
         guard !isBusy else { return }
@@ -81,7 +99,10 @@ final class AppStore {
             defer { isBusy = false; schedule(); if syncOnSuccess { sync() }; resumeAfterNetworkChange() }
             do {
                 try await client.signIn(username: credentials.username, password: credentials.password)
-                try writeCredentials(credentials)
+                try Task.checkCancellation()
+                let write = writeCredentials
+                try await Task.detached(priority: .userInitiated) { try write(credentials) }.value
+                try Task.checkCancellation()
                 try await loadCourseCatalog()
                 signedIn = true; status = "Ready"
                 if preferences.selectedCourses.isEmpty && !preferences.setupComplete {
@@ -91,6 +112,7 @@ final class AppStore {
                 syncOnSuccess = preferences.setupComplete
             } catch {
                 signedIn = false
+                if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled"; return }
                 reconnectPending = canRetryConnection(error)
                 status = reconnectPending ? "Waiting for connection" : "Sign-in required"
                 message = error.localizedDescription
