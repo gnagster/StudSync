@@ -4,8 +4,8 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 VERSION="${1:?Usage: package_release.sh version build output-directory}"
 BUILD="${2:?Provide a positive build number}"
 OUT="${3:?Provide an output directory}"
-if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD" =~ ^[1-9][0-9]*$ || "$(uname -m)" != arm64 ]]; then
-    echo 'Release packaging requires major.minor.patch, a positive build number, and an Apple Silicon Mac.' >&2
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD" =~ ^[1-9][0-9]*$ ]]; then
+    echo 'Release packaging requires major.minor.patch and a positive build number.' >&2
     exit 2
 fi
 mkdir -p "$OUT"
@@ -23,24 +23,24 @@ ditto -x -k "$STAGING/$NAME" "$STAGING/unpacked"
 APP="$STAGING/unpacked/StudSync.app"
 plutil -lint "$APP/Contents/Info.plist"
 codesign --verify --deep --strict "$APP"
-[[ -x "$APP/Contents/MacOS/StudSync" ]]
-[[ -s "$APP/Contents/Resources/AppIcon.icns" ]]
-[[ "$(lipo -archs "$APP/Contents/MacOS/StudSync")" == arm64 ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" == com.gnagster.StudSync ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" == "$VERSION" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" == "$BUILD" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" == 15.0 ]]
-[[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/en.lproj/Localizable.strings" ]]
-[[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/de.lproj/Localizable.strings" ]]
-[[ -x "$APP/Contents/Frameworks/Sparkle.framework/Sparkle" ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" == https://github.com/gnagster/StudSync/releases/latest/download/appcast.xml ]]
-[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" == "$(plutil -extract SUPublicEDKey raw -o - config/Updates.plist)" ]]
-[[ "$(plutil -extract SUVerifyUpdateBeforeExtraction raw -o - "$APP/Contents/Info.plist")" == true ]]
-[[ "$(plutil -extract SUEnableAutomaticChecks raw -o - "$APP/Contents/Info.plist")" == false ]]
-[[ "$(plutil -extract SUAutomaticallyUpdate raw -o - "$APP/Contents/Info.plist")" == false ]]
+[[ -x "$APP/Contents/MacOS/StudSync" ]] || exit 1
+[[ -s "$APP/Contents/Resources/AppIcon.icns" ]] || exit 1
+[[ "$(lipo -archs "$APP/Contents/MacOS/StudSync")" == arm64 ]] || exit 1
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Contents/Info.plist")" == com.gnagster.StudSync ]] || exit 1
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$APP/Contents/Info.plist")" == "$VERSION" ]] || exit 1
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$APP/Contents/Info.plist")" == "$BUILD" ]] || exit 1
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$APP/Contents/Info.plist")" == 15.0 ]] || exit 1
+[[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/en.lproj/Localizable.strings" ]] || exit 1
+[[ -s "$APP/Contents/Resources/StudSync_StudSyncApp.bundle/de.lproj/Localizable.strings" ]] || exit 1
+[[ -x "$APP/Contents/Frameworks/Sparkle.framework/Sparkle" ]] || exit 1
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$APP/Contents/Info.plist")" == https://github.com/gnagster/StudSync/releases/latest/download/appcast.xml ]] || exit 1
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" == "$(plutil -extract SUPublicEDKey raw -o - config/Updates.plist)" ]] || exit 1
+[[ "$(plutil -extract SUVerifyUpdateBeforeExtraction raw -o - "$APP/Contents/Info.plist")" == true ]] || exit 1
+[[ "$(plutil -extract SUEnableAutomaticChecks raw -o - "$APP/Contents/Info.plist")" == false ]] || exit 1
+[[ "$(plutil -extract SUAutomaticallyUpdate raw -o - "$APP/Contents/Info.plist")" == false ]] || exit 1
 otool -L "$APP/Contents/MacOS/StudSync" | grep -Fq '@rpath/Sparkle.framework/Versions/B/Sparkle'
 for license in StudSync SwiftSoup LRUCache SwiftAtomics Sparkle; do
-    [[ -s "$APP/Contents/Resources/Licenses/$license.txt" ]]
+    [[ -s "$APP/Contents/Resources/Licenses/$license.txt" ]] || exit 1
 done
 mv "$STAGING/$NAME" "$OUT/$NAME"
 (cd "$OUT" && shasum -a 256 "$NAME" > "$NAME.sha256" && shasum -a 256 -c "$NAME.sha256")

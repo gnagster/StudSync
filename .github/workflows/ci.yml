@@ -30,7 +30,7 @@ jobs:
     name: Native tests and app bundle
     needs: scope
     if: always() && github.event_name != 'schedule' && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')
-    runs-on: macos-26
+    runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
       - name: Require successful change classification
@@ -41,9 +41,11 @@ jobs:
         with:
           persist-credentials: false
       - run: ./script/test_workflow_helpers.sh
+      - run: ./script/test_release_helpers.sh
       - run: swift test
       - run: ./script/test_updates.sh
       - run: ./script/package_release.sh 0.1.0 "$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/release-test"
+      - run: ./script/test_release_bundle.sh "$RUNNER_TEMP/release-test/StudSync-0.1.0-arm64.zip"
   analyze:
     name: CodeQL (swift)
     needs: scope

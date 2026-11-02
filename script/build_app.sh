@@ -9,8 +9,8 @@ if [[ "$APP" != /*.app || ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD"
     echo "Expected an absolute .app path, numeric major.minor.patch version, and positive build number." >&2
     exit 2
 fi
-swift build -c release
-BIN_DIR="$(swift build -c release --show-bin-path)"
+swift build --arch arm64 -c release
+BIN_DIR="$(swift build --arch arm64 -c release --show-bin-path)"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/StudSync" "$APP/Contents/MacOS/StudSync"
 cp "$ROOT_DIR/Sources/StudSyncApp/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"

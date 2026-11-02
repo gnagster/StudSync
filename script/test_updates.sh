@@ -84,7 +84,11 @@ XML
     RESULT="$(cat "$CASE/result" 2>/dev/null || echo timeout)"
     VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$CASE/installed/UpdateFixture.app/Contents/Info.plist")"
     codesign --verify --deep --strict "$CASE/installed/UpdateFixture.app"
-    if [[ "$mode" == valid ]]; then [[ "$RESULT" == installed && "$VERSION" == 2 ]]; else [[ "$RESULT" == error && "$VERSION" == 1 ]]; fi
+    if [[ "$mode" == valid ]]; then
+        [[ "$RESULT" == installed && "$VERSION" == 2 ]] || exit 1
+    else
+        [[ "$RESULT" == error && "$VERSION" == 1 ]] || exit 1
+    fi
     echo "Sparkle $mode update passed (result=$RESULT, installed version=$VERSION)."
     kill "$SERVER_PID" 2>/dev/null || true
     wait "$SERVER_PID" 2>/dev/null || true
