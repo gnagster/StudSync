@@ -74,6 +74,7 @@
 "University web login" = "Universitäts-Login";
 "Choose sync folder" = "Sync-Ordner auswählen";
 "Finish signing into Stud.IP, then click Continue." = "Schließe die Anmeldung bei Stud.IP ab und klicke auf Weiter.";
+"Use University web login… to sign in again." = "Melde dich über „Universitäts-Login öffnen …“ erneut an.";
 "Stud.IP returned an unexpected response. Please try again later." = "Stud.IP hat eine unerwartete Antwort gesendet. Bitte versuche es später erneut.";
 "A remote file has an unsafe or unavailable destination." = "Der Zielpfad einer Datei ist unsicher oder nicht verfügbar.";
 "A download was incomplete. Your existing file was not changed." = "Ein Download war unvollständig. Deine vorhandene Datei wurde nicht verändert.";

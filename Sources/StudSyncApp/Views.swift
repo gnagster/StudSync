@@ -91,15 +91,21 @@ struct WebLogin: View {
     var body: some View {
         VStack(spacing: 0) {
             WebContent(webView: webView)
-            HStack {
-                Text(L("Finish the official university sign-in, then continue.")).font(.caption)
-                Spacer()
-                Button(L("Cancel")) { store.showWebLogin = false }
-                Button(L("Continue")) {
-                    webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-                        Task { @MainActor in store.adoptWebSession(cookies) }
-                    }
-                }.buttonStyle(.borderedProminent).disabled(store.isBusy)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(L("Finish the official university sign-in, then continue.")).font(.caption)
+                    Spacer()
+                    Button(L("Cancel")) { store.showWebLogin = false }
+                    Button(L("Continue")) {
+                        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                            Task { @MainActor in store.adoptWebSession(cookies) }
+                        }
+                    }.buttonStyle(.borderedProminent).disabled(store.isBusy)
+                }
+                if let message = store.message {
+                    Text(L(message)).font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
             }.padding()
         }.frame(width: 760, height: 660)
         .onAppear { webView.load(URLRequest(url: StudIPClient.origin.appendingPathComponent("dispatch.php/my_courses"))) }

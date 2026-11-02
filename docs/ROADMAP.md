@@ -27,6 +27,8 @@ PR #30's recovery writes also make the app support directory private (`0700`) be
 
 PR #30 also keeps the interactive sign-in hint in the failing operation's feedback slot, covering authentication rejected during adoption or the following catalog fetch and clearing the hint after successful sign-in. The expanded suite reports 61 native tests (live university test skipped).
 
+Web sign-in stays open until adoption and catalog verification both succeed and displays errors in the sheet. Its sign-in hint takes priority over retained sync feedback; dismissing the sheet changes the hint to the available web-login action. Regressions retain an earlier sync error through both rejection phases and clear it only after a successful sync. README/release instructions now locate update checks in Settings.
+
 ## Verification baseline
 
 PR #27's accepted head `17d3e0e` completed Codex review without findings plus 👍, CodeRabbit approval without outstanding feedback, all required native/Swift/CodeRabbit checks and resolved conversations. Native CI ran the 51-test suite (opt-in university test skipped), all three real updater cases, arm64 packaging and invalid-bundle checks. Local verification also passed from a disposable clean clone. Historical SHAs record evidence only; always inspect the live PR head before any merge.

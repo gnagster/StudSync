@@ -262,6 +262,12 @@ struct AppStoreTests {
     @Test(arguments: [false, true]) func webSignInHintIsVisibleForAdoptionAndCatalogRejection(_ catalogFailure: Bool) async throws {
         let store = store()
         store.preferences.intervalMinutes = 0
+        store.showWebLogin = true
+        store.signedIn = true
+        ConnectionFixture.response = { _ in (401, "") }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
         ConnectionFixture.response = { request in
             if catalogFailure && request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
             return (401, "")
@@ -271,10 +277,19 @@ struct AppStoreTests {
         #expect(!store.signedIn)
         #expect(store.message == "Finish signing into Stud.IP, then click Continue.")
         #expect(store.needsAttention)
+        #expect(store.showWebLogin)
+        store.showWebLogin = false
+        #expect(store.message == "Use University web login… to sign in again.")
+        store.showWebLogin = true
         try serveCourses([Course(id: "cc", title: "Course")])
         store.adoptWebSession([])
         try await waitForConnection(store)
         #expect(store.signedIn)
+        #expect(!store.showWebLogin)
+        #expect(store.message != "Finish signing into Stud.IP, then click Continue.")
+        #expect(store.needsAttention) // Signing in does not itself repair the earlier failed sync.
+        store.sync()
+        try await waitForConnection(store)
         #expect(store.message == nil)
         #expect(!store.needsAttention)
     }

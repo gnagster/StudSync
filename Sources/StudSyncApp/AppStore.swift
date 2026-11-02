@@ -21,6 +21,9 @@ final class AppStore {
     var message: String? {
         get {
             let entries = MessageSource.allCases.compactMap { feedback[$0] }
+            if let hint = entries.first(where: \.isSignInHint) {
+                return showWebLogin ? hint.text : "Use University web login… to sign in again."
+            }
             return (entries.first(where: requiresAttention) ?? entries.first)?.text
         }
         set { feedback[.operation] = newValue.map { Feedback(text: $0) } }
@@ -29,7 +32,7 @@ final class AppStore {
         feedback.values.contains(where: requiresAttention)
     }
     private enum MessageSource: CaseIterable { case settingsSave, settingsLoad, launchAtLogin, sync, catalog, operation }
-    private struct Feedback { let text: String; var isOffline = false; var isTransportFailure = false }
+    private struct Feedback { let text: String; var isOffline = false; var isTransportFailure = false; var isSignInHint = false }
     // Independent failures clear only when their corresponding operation recovers.
     private var feedback: [MessageSource: Feedback] = [:]
     private func requiresAttention(_ entry: Feedback) -> Bool {
@@ -326,17 +329,17 @@ final class AppStore {
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
             do {
                 try await client.adopt(cookies: cookies)
-                signedIn = true; reconnectPending = false; password = ""; showWebLogin = false
+                signedIn = true; reconnectPending = false; password = ""
                 message = nil; source = .catalog
                 try await loadCourseCatalog()
-                status = "Ready"; message = nil; feedback[.catalog] = nil
+                status = "Ready"; message = nil; feedback[.catalog] = nil; showWebLogin = false
                 if !preferences.setupComplete && preferences.selectedCourses.isEmpty {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
             } catch {
                 reportSyncFailure(error, source: source)
                 if case StudSyncError.authentication = error {
-                    feedback[source] = Feedback(text: "Finish signing into Stud.IP, then click Continue.")
+                    feedback[source] = Feedback(text: "Finish signing into Stud.IP, then click Continue.", isSignInHint: true)
                 }
             }
         }
