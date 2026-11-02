@@ -6,15 +6,15 @@ Measurements from November 2, 2026. These are individual observations, not perfo
 
 Completed hosted runs used `macos-26`, manual `swift build`, and CodeQL action v4.39.1. The build log has a long interval before its first package-fetch output; the logs do not establish what causes that interval.
 
-| Observation | PR #19 | PR #20 |
-| --- | ---: | ---: |
-| Full Swift job | 17m57s | 16m15s |
-| Build command to first fetch output | 9m20s | 7m52s |
-| First fetch to last resolved working copy | 18.3s | 12.9s |
-| Last working copy to “Building for debugging” | 6.5s | 5.2s |
-| Build-start output to build completion | 6m07s | 5m53s |
+| Observation | PR #19 | PR #20 | PR #22, verbose |
+| --- | ---: | ---: | ---: |
+| Full Swift job | 17m57s | 16m15s | 16m09s |
+| Build command to first fetch output | 9m20s | 7m52s | 7m51s |
+| First fetch to last resolved working copy | 18.3s | 12.9s | 17.6s |
+| Last working copy to “Building for debugging” | 6.5s | 5.2s | 6.5s |
+| Build-start output to build completion | 6m07s | 5m53s | 6m01s |
 
-Evidence: [PR #19 Swift job](https://github.com/gnagster/StudSync/actions/runs/41376618591/job/125058147223), [PR #20 Swift job](https://github.com/gnagster/StudSync/actions/runs/41378575155/job/125064133069). Fetch/resolution and build spans are wall-clock log intervals, not package CPU attribution.
+Evidence: [PR #19 Swift job](https://github.com/gnagster/StudSync/actions/runs/41376618591/job/125058147223), [PR #20 Swift job](https://github.com/gnagster/StudSync/actions/runs/41378575155/job/125064133069), [PR #22 verbose Swift job](https://github.com/gnagster/StudSync/actions/runs/41384659213/job/125082732083). Fetch/resolution and build spans are wall-clock log intervals, not package CPU attribution.
 
 An isolated local experiment used Swift 6.3.3, Xcode 26.6, arm64, and the pinned SwiftSoup 2.11.3 / LRUCache 1.3.0 / Swift Atomics 1.3.1 graph. Source resolution used two fresh scratch directories with one initially empty shared package cache. SDK/compiler caches were not cleared. No CodeQL tracer was active locally.
 
@@ -44,13 +44,15 @@ For target comparisons, use `swift build --cache-path "$bench/cache" --scratch-p
 
 The 0.55-second object-warm build skips compilation and is not a suitable CodeQL optimization. GitHub's [Swift build guidance](https://docs.github.com/en/code-security/tutorials/customize-code-scanning/prepare-code-for-analysis) recommends a clean build and warns that compilation caches can skip extraction. [Built-in dependency caching](https://docs.github.com/en/code-security/concepts/code-scanning/codeql/codeql-for-compiled-languages#about-dependency-caching-for-codeql) is documented for Java, Go and C#, not Swift. Keep the first-party source-archive check and full traced builds. Earlier package pre-resolution also failed to improve measured job time; do not repeat it as an untested speedup.
 
-The unlogged pre-fetch interval remains unexplained. The workflow now uses `swift build --verbose` so the next traced scan exposes SwiftPM/manifest/compiler commands around that interval. This is a diagnostic change, not a claimed speedup. Inspect that next completed run before choosing another optimization; keep compilation, query scope and source-archive coverage intact.
+The completed verbose run still has a 7m51s gap: the command starts at 03:44:24 UTC, the first manifest/compiler output appears at 03:52:15, and fetching starts in that same second. The log cannot separate process startup, manifest compilation/execution, tracer overhead, and buffered output within that gap. Package source fetches themselves report 0.72–2.02 seconds. The run verifies all eight first-party Swift files in the source archive. Verbose logging is diagnostic, not a speedup.
+
+The hosted image is `macos-26-arm64`, while the manifest and application compiler commands target `x86_64`; CodeQL CLI 2.27.3 uses the `osx64` bundle. GitHub's [system requirements](https://codeql.github.com/docs/codeql-overview/system-requirements/) explain that traced builds on Apple Silicon require Rosetta. This makes translated startup/tooling a candidate for a controlled comparison, not a proven cause. A future comparison can explicitly target the app's arm64 architecture using the [documented Swift build option](https://docs.github.com/en/code-security/reference/code-scanning/codeql/build-options-for-compiled-languages#customizing-swift-compilation-in-a-codeql-analysis-workflow). That would not establish that the SwiftPM host/manifest process runs natively. Do not disable tracing, restore compiled objects, or remove coverage checks to make the timing look better.
 
 ## App startup and short process observation
 
 The runtime check found a correctness issue: before the fix, every sampled main-thread stack was inside `AppStore.init → CredentialVault.read → SecItemCopyMatching`, waiting for system Keychain authorization before `NSApplication.run`. A successful process-existence check alone had not proved that the app event loop started.
 
-The fix in PR #21 loads saved credentials after initialization and performs blocking reads/writes off the main actor, retaining system authorization. A second sample found the main thread in the normal AppKit event loop and the waiting Keychain call on a background thread. Synthetic regressions cover blocking reads/writes, cancellation of late results, and manual sign-in after missing/denied credentials. No real Keychain entries are changed by these tests.
+The fix in open PR #21 loads saved credentials after initialization and performs blocking reads/writes off the main actor, retaining system authorization. A second sample found the main thread in the normal AppKit event loop and the waiting Keychain call on a background thread. Its later cancellation fix releases login controls while the old request remains blocked; synthetic regressions exercise a new manual login and web-session adoption without stale state updates. An in-flight system request can still finish, and new credential operations wait behind it to preserve save order. No real Keychain entries are changed by these tests.
 
 Three ten-second intervals of the fixed release process, still waiting for Keychain authorization:
 
