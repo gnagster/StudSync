@@ -174,6 +174,51 @@ struct AppStoreTests {
         store.setPaused(true)
         #expect(!store.needsAttention)
     }
+    @Test func lateOfflineNotificationReclassifiesOnlyTransportErrorsInManualMode() async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.signedIn = true
+        store.networkChanged(available: true)
+        ConnectionFixture.response = { _ in throw URLError(.timedOut) }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        store.networkChanged(available: false)
+        #expect(!store.needsAttention)
+        store.networkChanged(available: true)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { _ in (503, "") }
+        store.sync()
+        try await waitForConnection(store)
+        store.networkChanged(available: false)
+        #expect(store.needsAttention)
+    }
+    @Test func catalogRefreshDoesNotClearSyncFailureAndEachRecoversIndependently() async throws {
+        let store = store()
+        defer { store.setPaused(true) }
+        store.signedIn = true
+        ConnectionFixture.response = { _ in throw URLError(.cannotWriteToFile) }
+        store.sync()
+        try await waitForConnection(store)
+        let syncError = store.message
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.refreshCourses()
+        try await waitForConnection(store)
+        #expect(store.message == syncError)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { _ in (503, "") }
+        store.refreshCourses()
+        try await waitForConnection(store)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention) // The catalog failure still needs a successful refresh.
+        store.refreshCourses()
+        #expect(store.needsAttention) // Starting a retry does not establish recovery.
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+    }
     @Test func manualAndPausedModesDoNotRetryOfflineStartup() async throws {
         ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
         for paused in [true, false] {
@@ -283,6 +328,12 @@ struct AppStoreTests {
         #expect(store.save())
         #expect(store.message == nil)
         #expect(!store.needsAttention)
+        let backups = try FileManager.default.contentsOfDirectory(at: support, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("settings-recovery-") }
+        #expect(backups.count == 1)
+        let backup = try #require(backups.first)
+        #expect(try Data(contentsOf: backup) == Data("invalid settings".utf8))
+        #expect(try FileManager.default.attributesOfItem(atPath: backup.path)[.posixPermissions] as? Int == 0o600)
         try Data("invalid again".utf8).write(to: support.appendingPathComponent("settings.json"))
         let other = AppStore(support: support)
         other.message = "Unrelated failure"
