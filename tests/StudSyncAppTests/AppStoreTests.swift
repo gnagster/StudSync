@@ -28,6 +28,37 @@ private final class RequestCount: @unchecked Sendable {
     var total: Int { lock.withLock { value } }
 }
 
+private final class SemesterFixture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var offline = false
+    private var files: Set<String> = []
+    var requestedFiles: Set<String> { lock.withLock { files } }
+    func setOffline(_ value: Bool) { lock.withLock { offline = value } }
+    func clearRequests() { lock.withLock { files = [] } }
+    func respond(_ request: URLRequest) throws -> (Int, String) {
+        try lock.withLock {
+            let url = request.url!
+            let path = url.path
+            if path.isEmpty || path == "/" || path == "/dispatch.php/login" {
+                return (200, #"<form action="/dispatch.php/login"><input name="loginname"><input name="password"></form>"#)
+            }
+            if path.hasSuffix("users/me") { return (200, #"{"data":{"id":"ee"}}"#) }
+            if path.hasSuffix("semesters") {
+                return (200, #"{"data":[{"id":"aa","attributes":{"title":"Past","start":"2025-04-01","is-current":false}},{"id":"bb","attributes":{"title":"Current","start":"2026-10-01","is-current":true}}]}"#)
+            }
+            if path.hasSuffix("/courses") {
+                let term = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "filter[semester]" })?.value
+                if term == "aa" && offline { throw URLError(.notConnectedToInternet) }
+                let courses = term == "aa" ? [("dd", "Past course")] : term == "bb" ? [("cc", "Current course")] : [("dd", "Past course"), ("cc", "Current course")]
+                let body = try JSONSerialization.data(withJSONObject: ["data": courses.map { ["id": $0.0, "attributes": ["title": $0.1]] }])
+                return (200, String(decoding: body, as: UTF8.self))
+            }
+            files.insert(path)
+            return (200, #"{"data":[]}"#)
+        }
+    }
+}
+
 @Suite(.serialized) @MainActor
 struct AppStoreTests {
     private func store(support: URL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
@@ -318,5 +349,119 @@ struct AppStoreTests {
         #expect(!store.canStartSync)
         store.finishSetup()
         #expect(!store.preferences.setupComplete)
+    }
+    @Test func historicalSelectionsSurviveBrowsingSavingRestartAndSync() async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        let fixture = SemesterFixture()
+        ConnectionFixture.response = { try fixture.respond($0) }
+        let store = store(support: support)
+        defer { store.setPaused(true) }
+        store.preferences.setupComplete = false; store.preferences.selectedCourses = []
+        store.preferences.intervalMinutes = 0
+        store.connect()
+        try await waitForConnection(store)
+        #expect(store.semesterID == "bb")
+        #expect(store.visibleCourses.map(\.id) == ["cc"])
+        #expect(store.preferences.selectedCourses == ["cc"])
+        store.refreshCourses(semesterID: "aa")
+        try await waitForConnection(store)
+        #expect(store.visibleCourses.map(\.id) == ["dd"])
+        #expect(store.preferences.selectedCourses == ["cc"])
+        store.preferences.selectedCourses.insert("dd")
+        store.refreshCourses(semesterID: "")
+        try await waitForConnection(store)
+        #expect(Set(store.visibleCourses.map(\.id)) == ["cc", "dd"])
+        store.refreshCourses(semesterID: "bb")
+        try await waitForConnection(store)
+        #expect(store.preferences.selectedCourses == ["cc", "dd"])
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.preferences.selectedCourses == ["cc", "dd"])
+        store.finishSetup()
+        try await waitForConnection(store)
+        #expect(store.preferences.lastSync != nil)
+        #expect(fixture.requestedFiles.contains("/jsonapi.php/v1/courses/dd/file-refs"))
+        #expect(fixture.requestedFiles.contains("/jsonapi.php/v1/courses/cc/file-refs"))
+
+        fixture.clearRequests()
+        let config = URLSessionConfiguration.ephemeral; config.protocolClasses = [ConnectionFixture.self]
+        let restored = AppStore(support: support, client: StudIPClient(session: URLSession(configuration: config)),
+                                readCredentials: { Credentials(username: "fixture", password: "not-real") }, writeCredentials: { _ in })
+        defer { restored.setPaused(true) }
+        restored.start()
+        try await waitForConnection(restored)
+        #expect(restored.preferences.selectedCourses == ["cc", "dd"])
+        #expect(restored.semesterID == "bb")
+        #expect(restored.status == "Up to date")
+        #expect(fixture.requestedFiles.contains("/jsonapi.php/v1/courses/dd/file-refs"))
+    }
+    @Test func failedSemesterChangePreservesTheVisibleCatalogAndSelections() async throws {
+        let fixture = SemesterFixture()
+        ConnectionFixture.response = { try fixture.respond($0) }
+        let store = store()
+        defer { store.setPaused(true) }
+        store.preferences.setupComplete = false
+        store.connect()
+        try await waitForConnection(store)
+        fixture.setOffline(true)
+        store.refreshCourses(semesterID: "aa")
+        try await waitForConnection(store)
+        #expect(store.semesterID == "bb")
+        #expect(store.visibleCourses.map(\.id) == ["cc"])
+        #expect(store.preferences.selectedCourses == ["cc"])
+        #expect(store.signedIn)
+        #expect(store.message != nil)
+        fixture.setOffline(false)
+        store.refreshCourses(semesterID: "aa")
+        try await waitForConnection(store)
+        #expect(store.semesterID == "aa")
+    }
+    @Test func onboardingRequiresVerifiedAccountFolderAndCoursesBeforeCompletion() {
+        let store = store()
+        defer { store.setPaused(true) }
+        store.preferences.setupComplete = false
+        store.preferences.destination = ""; store.preferences.selectedCourses = []
+        #expect(SetupStep.allCases.allSatisfy { !store.canContinueSetup($0) })
+        store.signedIn = true
+        #expect(store.canContinueSetup(.account))
+        #expect(!store.canContinueSetup(.folder))
+        store.preferences.destination = "/tmp/fixture"
+        #expect(store.canContinueSetup(.folder))
+        #expect(!store.canContinueSetup(.courses))
+        store.preferences.selectedCourses = ["cc"]
+        #expect(store.canContinueSetup(.courses))
+        #expect(store.canContinueSetup(.review))
+        #expect(!store.preferences.setupComplete)
+        store.isBusy = true
+        #expect(SetupStep.allCases.allSatisfy { !store.canContinueSetup($0) })
+        store.isBusy = false; store.signedIn = false
+        #expect(!store.canContinueSetup(.review))
+    }
+    @Test func webLoginDoesNotFallBackToOldCredentialsAfterCatalogNetworkFailure() async throws {
+        let store = store()
+        defer { store.setPaused(true) }
+        ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
+        store.start()
+        try await waitForConnection(store)
+        ConnectionFixture.response = { request in
+            if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            throw URLError(.notConnectedToInternet)
+        }
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.password.isEmpty)
+        #expect(store.message != nil)
+        #expect(store.nextSync != nil)
+        ConnectionFixture.response = { request in
+            #expect(request.url!.path.hasPrefix("/jsonapi.php/v1/"))
+            if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            if request.url!.path.hasSuffix("/courses") { return (200, #"{"data":[{"id":"cc","attributes":{"title":"Course"}}]}"#) }
+            return (200, #"{"data":[]}"#)
+        }
+        store.runScheduledSync()
+        try await waitForConnection(store)
+        #expect(store.status == "Up to date")
     }
 }

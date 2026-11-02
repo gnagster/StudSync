@@ -81,7 +81,7 @@ struct ClientTests {
                 }
                 return (200, "application/json", #"{"data":{"id":"bb"}}"#)
             }
-            await #expect(throws: StudSyncError.self) { try await client().courses() }
+            await #expect(throws: StudSyncError.self) { try await client().semesters() }
         }
     }
     @Test func rejectedSessionIsNotTreatedAsSuccessfulLogin() async throws {
@@ -90,6 +90,28 @@ struct ClientTests {
             return (200, "text/html", #"<form action="/dispatch.php/login"><input name="loginname"><input name="password"><input type="hidden" name="security_token" value="fixture"></form>"#)
         }
         await #expect(throws: StudSyncError.self) { try await client().signIn(username: "fixture", password: "not-real") }
+    }
+    @Test func semesterBrowsingUsesServerFiltersWhileSyncCanLoadAllEnrollment() async throws {
+        FixtureProtocol.handler = { request in
+            let url = request.url!
+            if url.path.hasSuffix("users/me") { return (200, "application/json", #"{"data":{"id":"cc"}}"#) }
+            if url.path.hasSuffix("semesters") {
+                return (200, "application/json", #"{"data":[{"id":"aa","attributes":{"title":"Summer 2025","start":"2025-04-01","is-current":false}},{"id":"bb","attributes":{"title":"Winter 2026","start":"2026-10-01","is-current":true}}]}"#)
+            }
+            let term = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "filter[semester]" })?.value
+            let courses = term == "aa" ? [("dd", "Past")] : term == "bb" ? [("ee", "Current")] : [("dd", "Past"), ("ee", "Current")]
+            let body = try JSONSerialization.data(withJSONObject: ["data": courses.map { ["id": $0.0, "attributes": ["title": $0.1]] }])
+            return (200, "application/json", String(decoding: body, as: UTF8.self))
+        }
+        let client = client()
+        let terms = try await client.semesters()
+        #expect(terms.map(\.title) == ["Winter 2026", "Summer 2025"])
+        #expect(terms.first?.isCurrent == true)
+        #expect(try await client.courses(semesterID: "aa").map(\.id) == ["dd"])
+        #expect(try await client.courses(semesterID: "bb").map(\.id) == ["ee"])
+        #expect(Set(try await client.courses().map(\.id)) == ["dd", "ee"])
+        FixtureProtocol.handler = { _ in Issue.record("Invalid semester IDs must not reach the network"); throw URLError(.badURL) }
+        await #expect(throws: StudSyncError.self) { try await client.courses(semesterID: "aa&filter[semester]=bb") }
     }
     @Test(arguments: [false, true]) func expiredSessionSignsInOnceAndResumesCourseRequest(_ asHTML: Bool) async throws {
         let fixture = ExpiringSession()
@@ -112,6 +134,16 @@ struct ClientTests {
             catch StudSyncError.authentication { }
         }
         #expect(fixture.loginCount == 2)
+    }
+    @Test func webSessionDoesNotFallBackToPreviouslySavedPasswordCredentials() async throws {
+        let fixture = ExpiringSession()
+        FixtureProtocol.handler = { fixture.respond($0) }
+        let client = client()
+        try await client.signIn(username: "fixture", password: "not-real")
+        try await client.adopt(cookies: [])
+        fixture.expire()
+        await #expect(throws: StudSyncError.self) { try await client.courses() }
+        #expect(fixture.loginCount == 1)
     }
     @Test func reconnectReusesVerifiedSessionAfterTransientCourseFailure() async throws {
         FixtureProtocol.handler = { request in
@@ -187,7 +219,16 @@ func liveGoettingenReadOnlyCheck() async throws {
     let client = StudIPClient()
     try await client.signIn(username: config.user.login, password: config.user.password)
     let courses = try await client.courses()
-    let course = try #require(courses.first)
+    let terms = try await client.semesters()
+    let currentTerm = terms.first(where: { $0.isCurrent })
+    let current = try #require(currentTerm)
+    let currentCourses = try await client.courses(semesterID: current.id)
+    #expect(Set(currentCourses.map(\.id)).isSubset(of: Set(courses.map(\.id))))
+    if let index = terms.firstIndex(where: \.isCurrent), index + 1 < terms.count {
+        let historical = try await client.courses(semesterID: terms[index + 1].id)
+        #expect(Set(historical.map(\.id)).isSubset(of: Set(courses.map(\.id))))
+    }
+    let course = try #require(currentCourses.first)
     let files = try await client.files(course: course)
     let remote = try #require(files.first(where: { $0.size < 10_000_000 }))
     let temporary = try await client.download(id: remote.id)
