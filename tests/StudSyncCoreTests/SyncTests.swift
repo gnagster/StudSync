@@ -316,6 +316,52 @@ private struct Scratch {
     #expect(try FileManager.default.contentsOfDirectory(atPath: scratch.root.path) == ["notes.txt"])
 }
 
+@Test(arguments: ["network", "truncated", "cancelled"], [false, true])
+func failedUpdatePreservesCheckpointAndCanRetryAfterRestart(_ failure: String, _ locallyEdited: Bool) async throws {
+    let scratch = try Scratch(); defer { scratch.remove() }
+    let manifest = scratch.root.appendingPathComponent("manifest.json")
+    let target = scratch.root.appendingPathComponent("notes.txt")
+    let engine = try SyncEngine(manifest: manifest)
+    let original = RemoteFile(id: "aa", components: ["notes.txt"], componentIDs: ["aa"], size: 4, revision: "1")
+    _ = try await engine.synchronize(original, courseID: "bb", root: scratch.root) { try scratch.download("same") }
+    if locallyEdited { try Data("mine".utf8).write(to: target) }
+    let checkpoint = try Data(contentsOf: manifest)
+    let update = RemoteFile(id: "aa", components: ["notes.txt"], componentIDs: ["aa"], size: 4, revision: "2")
+    let transfer = Task {
+        try await engine.synchronize(update, courseID: "bb", root: scratch.root) {
+            if failure == "network" { throw URLError(.networkConnectionLost) }
+            let file = try scratch.download(failure == "truncated" ? "ne" : "next")
+            if failure == "cancelled" { withUnsafeCurrentTask { $0?.cancel() } }
+            return file
+        }
+    }
+    do {
+        _ = try await transfer.value
+        Issue.record("An interrupted update must fail without installing its contents")
+    } catch {
+        switch failure {
+        case "network": #expect((error as? URLError)?.code == .networkConnectionLost)
+        case "truncated": guard case StudSyncError.sizeMismatch = error else { Issue.record("Expected size mismatch, got \(error)"); return }
+        default: #expect(error is CancellationError)
+        }
+    }
+    #expect(try String(contentsOf: target, encoding: .utf8) == (locallyEdited ? "mine" : "same"))
+    #expect(try Data(contentsOf: manifest) == checkpoint)
+    #expect(Set(try FileManager.default.contentsOfDirectory(atPath: scratch.root.path)) == ["notes.txt", "manifest.json"])
+
+    let restored = try SyncEngine(manifest: manifest)
+    let change = try #require(await restored.synchronize(update, courseID: "bb", root: scratch.root) { try scratch.download("next") })
+    #expect(change.conflict == locallyEdited)
+    #expect(try String(contentsOfFile: change.path, encoding: .utf8) == "next")
+    #expect(try String(contentsOf: target, encoding: .utf8) == (locallyEdited ? "mine" : "next"))
+    let reloaded = try SyncEngine(manifest: manifest)
+    let repeated = try await reloaded.synchronize(update, courseID: "bb", root: scratch.root) {
+        Issue.record("A successful retry must persist the new revision")
+        throw URLError(.badURL)
+    }
+    #expect(repeated == nil)
+}
+
 @Test func loginUsesCredentialFormAndRejectsForeignAction() throws {
     let html = """
     <form action="/settings"><input name="security_token" value="wrong"></form>

@@ -9,8 +9,8 @@ if [[ "$APP" != /*.app || ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD"
     echo "Expected an absolute .app path, numeric major.minor.patch version, and positive build number." >&2
     exit 2
 fi
-swift build -c release
-BIN_DIR="$(swift build -c release --show-bin-path)"
+swift build --arch arm64 -c release
+BIN_DIR="$(swift build --arch arm64 -c release --show-bin-path)"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/StudSync" "$APP/Contents/MacOS/StudSync"
 cp "$ROOT_DIR/Sources/StudSyncApp/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
@@ -22,6 +22,7 @@ install -m 644 UNLICENSE "$APP/Contents/Resources/Licenses/StudSync.txt"
 install -m 644 .build/checkouts/SwiftSoup/LICENSE "$APP/Contents/Resources/Licenses/SwiftSoup.txt"
 install -m 644 .build/checkouts/LRUCache/LICENSE.md "$APP/Contents/Resources/Licenses/LRUCache.txt"
 install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$APP/Contents/Resources/Licenses/SwiftAtomics.txt"
+install -m 644 .build/checkouts/Sparkle/LICENSE "$APP/Contents/Resources/Licenses/Sparkle.txt"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -41,9 +42,14 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 <key>CFBundleLocalizations</key><array><string>en</string><string>de</string></array>
 </dict></plist>
 PLIST
+/usr/libexec/PlistBuddy -c 'Merge config/Updates.plist' "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $BUILD" "$APP/Contents/Info.plist"
-# Only strip copied build metadata from the app we just generated.
+mkdir -p "$APP/Contents/Frameworks"
+ditto --norsrc --noextattr .build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework "$APP/Contents/Frameworks/Sparkle.framework"
+# Immutable package artifacts need writable copies to remove Finder metadata.
+chmod -R u+w "$APP/Contents/Frameworks"
 xattr -cr "$APP"
-codesign --force --deep --sign - --identifier com.gnagster.StudSync "$APP"
+# Preserve Sparkle's vendor signatures on its framework and helper processes.
+codesign --force --sign - --identifier com.gnagster.StudSync "$APP"
 codesign --verify --deep --strict "$APP"

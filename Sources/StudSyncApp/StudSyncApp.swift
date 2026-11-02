@@ -6,6 +6,7 @@ import Network
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let connectivity = NWPathMonitor()
     func applicationDidFinishLaunching(_ notification: Notification) {
+        AppUpdates.shared.start()
         let store = AppStore.shared
         connectivity.pathUpdateHandler = { path in
             let available = path.status == .satisfied

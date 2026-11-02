@@ -77,3 +77,7 @@
 "Stud.IP returned an unexpected response. Please try again later." = "Stud.IP hat eine unerwartete Antwort gesendet. Bitte versuche es später erneut.";
 "A remote file has an unsafe or unavailable destination." = "Der Zielpfad einer Datei ist unsicher oder nicht verfügbar.";
 "A download was incomplete. Your existing file was not changed." = "Ein Download war unvollständig. Deine vorhandene Datei wurde nicht verändert.";
+"App updates" = "App-Updates";
+"Check for Updates…" = "Nach Updates suchen …";
+"Automatically check for updates" = "Automatisch nach Updates suchen";
+"Automatically download updates" = "Updates automatisch laden";

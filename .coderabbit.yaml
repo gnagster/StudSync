@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: en-US
+reviews:
+  profile: chill
+  review_progress: true
+  fail_commit_status: true
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    auto_pause_after_reviewed_commits: 0
+    drafts: false
+  auto_approvals:
+    enabled: true
+    allow_author_approval: false
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
+  tools:
+    languagetool:
+      disabled_rules:
+        - QB_NEW_EN_HYPHEN
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - AGENTS.md
+      - SECURITY.md
