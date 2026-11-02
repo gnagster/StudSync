@@ -136,9 +136,8 @@ struct ClientTests {
             return (200, "application/json", #"{"data":[{"id":"dd","attributes":{"name":"①.pdf","filesize":4,"chdate":"1","is-downloadable":true},"relationships":{"parent":{"data":{"id":"aa"}}}},{"id":"ee","attributes":{"name":"1.pdf","filesize":4,"chdate":"1","is-downloadable":true},"relationships":{"parent":{"data":{"id":"aa"}}}},{"id":"ff","attributes":{"name":"1.pdf","filesize":4,"chdate":"1","is-downloadable":true},"relationships":{"parent":{"data":{"id":"bb"}}}}]}"#)
         }
         let files = try await client().files(course: Course(id: "99", title: "Course"))
-        #expect(Set(files.map { $0.components.joined(separator: "/").lowercased() }).count == 3)
-        #expect(files[0].components[1] == files[1].components[1])
-        #expect(files[0].components[1] != files[2].components[1])
+        #expect(files.allSatisfy { $0.components == ["Course", "1", "1.pdf"] })
+        #expect(files.map(\.componentIDs) == [["99", "aa", "dd"], ["99", "aa", "ee"], ["99", "bb", "ff"]])
     }
     @Test func htmlAttachmentsRequireAValidSessionRatherThanADifferentMimeType() async throws {
         let response = HTTPURLResponse(url: StudIPClient.origin.appendingPathComponent("jsonapi.php/v1/file-refs/aa/content"), statusCode: 200, httpVersion: nil, headerFields: ["Content-Type": "text/html"])!
@@ -170,7 +169,10 @@ struct ClientTests {
         let client = client()
         let first = try await client.files(course: Course(id: "aa", title: "Seminar"))
         let second = try await client.files(course: Course(id: "bb", title: "Seminar"))
-        #expect(first[0].components[0] != second[0].components[0])
+        #expect(first[0].components == ["Seminar", "notes.pdf"])
+        #expect(second[0].components == first[0].components)
+        #expect(first[0].componentIDs == ["aa", "ee"])
+        #expect(second[0].componentIDs == ["bb", "ee"])
     }
 }
 
