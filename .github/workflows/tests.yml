@@ -30,4 +30,4 @@ jobs:
         with:
           persist-credentials: false
       - run: swift test
-      - run: ./script/build_and_run.sh --build
+      - run: ./script/package_release.sh 0.1.0 "$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/release-test"
