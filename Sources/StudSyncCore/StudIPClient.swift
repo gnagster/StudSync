@@ -169,6 +169,7 @@ public actor StudIPClient {
             let files = try await list("courses/\(course.id)/file-refs", as: FileAttributes.self)
             return try files.filter { $0.attributes.downloadable && $0.attributes.filesize != nil }.map { file in
                 var components = [try SafePath.remoteComponent(file.attributes.name, id: file.id, isFile: true)]
+                var componentIDs = [file.id]
                 var parent = file.relationships?.parent?.data?.id
                 var seen: Set<String> = []
                 while let id = parent {
@@ -176,10 +177,13 @@ public actor StudIPClient {
                     parent = folder.relationships?.parent?.data?.id
                     if parent != nil {
                         components.insert(try SafePath.remoteComponent(folder.attributes.name, id: folder.id, isFile: false), at: 0)
+                        componentIDs.insert(folder.id, at: 0)
                     }
                 }
-                components.insert("\(course.title) [\(course.id)]", at: 0)
-                return RemoteFile(id: file.id, components: components, size: file.attributes.filesize!, revision: file.attributes.chdate)
+                components.insert(try SafePath.remoteComponent(course.title, id: course.id, isFile: false), at: 0)
+                componentIDs.insert(course.id, at: 0)
+                return RemoteFile(id: file.id, components: components, componentIDs: componentIDs,
+                                  size: file.attributes.filesize!, revision: file.attributes.chdate)
             }
         } catch StudSyncError.http(403) {
             // A disabled course file area must not prevent other courses from syncing.

@@ -22,10 +22,11 @@ public struct Course: Identifiable, Codable, Hashable, Sendable {
 public struct RemoteFile: Identifiable, Sendable {
     public var id: String
     public var components: [String]
+    public var componentIDs: [String]
     public var size: Int64
     public var revision: String
-    public init(id: String, components: [String], size: Int64, revision: String) {
-        self.id = id; self.components = components; self.size = size; self.revision = revision
+    public init(id: String, components: [String], componentIDs: [String], size: Int64, revision: String) {
+        self.id = id; self.components = components; self.componentIDs = componentIDs; self.size = size; self.revision = revision
     }
 }
 
@@ -52,13 +53,14 @@ public struct Preferences: Codable, Sendable {
 
 public enum SafePath {
     public static func remoteComponent(_ name: String, id: String, isFile: Bool) throws -> String {
+        try validateRemoteID(id)
+        return try suffixedComponent(name, suffix: "", isFile: isFile)
+    }
+
+    static func validateRemoteID(_ id: String) throws {
         guard !id.isEmpty, id.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else {
             throw StudSyncError.unsafePath
         }
-        // Reserve brackets for identity markers so remote names cannot impersonate them.
-        let name = try component(name).replacingOccurrences(of: "%", with: "%25")
-            .replacingOccurrences(of: "[", with: "%5B").replacingOccurrences(of: "]", with: "%5D")
-        return try suffixedComponent(name, suffix: " [\(isFile ? "file" : "folder")-\(id)]", isFile: isFile)
     }
 
     static func suffixedComponent(_ name: String, suffix: String, isFile: Bool) throws -> String {
