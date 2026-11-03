@@ -20,7 +20,7 @@ This personal build is ad-hoc signed and not notarized. Keep the app at its inst
 
 Download the `StudSync-…-arm64.zip` app archive from the [latest GitHub release](https://github.com/gnagster/StudSync/releases/latest), unzip it, and move `StudSync.app` into your Applications folder. These builds require Apple Silicon and macOS 15+. Source-code archives are not compiled apps.
 
-The app is ad-hoc signed and not notarized. If macOS blocks the first launch, try opening the app, then use System Settings → Privacy & Security → Open Anyway for StudSync and confirm. Only approve a download you trust; do not disable Gatekeeper globally. See the [installation and update notes](docs/RELEASE_NOTES.md). Sparkle 2 provides Check for Updates in the menu panel and opt-in automatic checks/downloads in Settings. Updates require the project's Ed25519 archive signature before extraction; no paid Apple identity is required. Developers use the [release procedure](docs/RELEASING.md).
+The app is ad-hoc signed and not notarized. If macOS blocks the first launch, try opening the app, then use System Settings → Privacy & Security → Open Anyway for StudSync and confirm. Only approve a download you trust; do not disable Gatekeeper globally. See the [installation and update notes](docs/RELEASE_NOTES.md). Sparkle 2 provides Check for Updates and opt-in automatic checks/downloads in Settings. Updates require the project's Ed25519 archive signature before extraction; no paid Apple identity is required. Developers use the [release procedure](docs/RELEASING.md).
 
 ## First launch
 

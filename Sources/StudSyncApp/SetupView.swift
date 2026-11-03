@@ -69,7 +69,7 @@ struct SetupView: View {
 
     private var header: some View {
         HStack(spacing: 18) {
-            Image("ClassicFold", bundle: appResourceBundle)
+            Image(nsImage: AppImages.logo)
                 .resizable().scaledToFit().frame(width: 72, height: 72).accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 6) {
                 Text(L(onboarding ? "Welcome to StudSync" : "Your courses, in Finder.")).font(.largeTitle.bold())
@@ -203,7 +203,7 @@ struct SetupView: View {
                 }
             }
             if store.isBusy && store.total > 0 { ProgressView(value: Double(store.completed), total: Double(store.total)) }
-            if let message = store.message {
+            ForEach(store.messages, id: \.self) { message in
                 Label(L(message), systemImage: "info.circle").font(.callout).foregroundStyle(.orange)
                     .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
             }

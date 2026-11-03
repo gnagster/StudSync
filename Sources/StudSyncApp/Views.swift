@@ -12,11 +12,10 @@ func L(_ key: String) -> String {
 
 struct StatusPanel: View {
     @Bindable var store: AppStore
-    private var updates: AppUpdates { .shared }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack(spacing: 10) {
-                Image("ClassicFold", bundle: appResourceBundle)
+                Image(nsImage: AppImages.logo)
                     .resizable().scaledToFit().frame(width: 32, height: 32).accessibilityHidden(true)
                 VStack(alignment: .leading) {
                     Text("StudSync").font(.headline)
@@ -37,7 +36,7 @@ struct StatusPanel: View {
                 stat("Courses", value: String(store.preferences.selectedCourses.count))
             }
             if store.bytes > 0 { Text(ByteCountFormatter.string(fromByteCount: store.bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary) }
-            if let message = store.message {
+            ForEach(store.messages, id: \.self) { message in
                 Text(L(message)).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
@@ -70,13 +69,13 @@ struct StatusPanel: View {
                 }
             }
             Divider()
-            Button(L("Check for Updates…")) { updates.check() }.disabled(!updates.canCheck)
             HStack {
                 Button(L(store.preferences.setupComplete ? "Settings…" : "Set up StudSync…")) { AppWindows.show(store) }
                 Spacer()
                 Button(L("Quit")) { NSApp.terminate(nil) }
             }.font(.caption)
         }.padding(18).frame(width: 380).tint(StudSyncStyle.accent)
+            .background(MenuBarPanelAnchor())
     }
     private func stat(_ key: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -92,15 +91,24 @@ struct WebLogin: View {
     var body: some View {
         VStack(spacing: 0) {
             WebContent(webView: webView)
-            HStack {
-                Text(L("Finish the official university sign-in, then continue.")).font(.caption)
-                Spacer()
-                Button(L("Cancel")) { store.showWebLogin = false }
-                Button(L("Continue")) {
-                    webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-                        Task { @MainActor in store.adoptWebSession(cookies) }
-                    }
-                }.buttonStyle(.borderedProminent).disabled(store.isBusy)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text(L("Finish the official university sign-in, then continue.")).font(.caption)
+                    Spacer()
+                    Button(L("Cancel")) { store.cancel(); store.showWebLogin = false }
+                    Button(L("Continue")) {
+                        let attempt = store.webLoginAttempt
+                        webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
+                            Task { @MainActor in
+                                store.adoptWebSession(cookies, attempt: attempt)
+                            }
+                        }
+                    }.buttonStyle(.borderedProminent).disabled(store.isBusy)
+                }
+                ForEach(store.messages, id: \.self) { message in
+                    Text(L(message)).font(.caption).foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+                }
             }.padding()
         }.frame(width: 760, height: 660)
         .onAppear { webView.load(URLRequest(url: StudIPClient.origin.appendingPathComponent("dispatch.php/my_courses"))) }

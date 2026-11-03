@@ -18,7 +18,33 @@ final class AppStore {
     var visibleCourses: [Course] { courses.filter { semesterCourseIDs?.contains($0.id) ?? true } }
     var username = ""
     var password = ""
-    var message: String?
+    var message: String? {
+        get {
+            let entries = MessageSource.allCases.compactMap { feedback[$0] }
+            if let hint = entries.first(where: \.isSignInHint) {
+                return showWebLogin ? hint.text : "Use University web login… to sign in again."
+            }
+            return (entries.first(where: requiresAttention) ?? entries.first)?.text
+        }
+        set { feedback[.operation] = newValue.map { Feedback(text: $0) } }
+    }
+    var needsAttention: Bool {
+        feedback.values.contains(where: requiresAttention)
+    }
+    var messages: [String] {
+        var result = message.map { [$0] } ?? []
+        for entry in MessageSource.allCases.compactMap({ feedback[$0] }) where !entry.isSignInHint && !result.contains(entry.text) {
+            result.append(entry.text)
+        }
+        return result
+    }
+    private enum MessageSource: CaseIterable { case settingsSave, settingsLoad, launchAtLogin, sync, catalog, operation }
+    private struct Feedback { let text: String; var isOffline = false; var isTransportFailure = false; var isSignInHint = false }
+    // Independent failures clear only when their corresponding operation recovers.
+    private var feedback: [MessageSource: Feedback] = [:]
+    private func requiresAttention(_ entry: Feedback) -> Bool {
+        !entry.isOffline && !(entry.isTransportFailure && networkAvailable == false)
+    }
     var status = "Ready"
     var isBusy = false
     var paused = false
@@ -26,7 +52,10 @@ final class AppStore {
     var completed = 0
     var total = 0
     var bytes: Int64 = 0
-    var showWebLogin = false
+    var showWebLogin = false {
+        didSet { if showWebLogin != oldValue { webLoginAttempt = UUID() } }
+    }
+    private(set) var webLoginAttempt = UUID()
     private(set) var launchAtLoginStatus: SMAppService.Status
     var changes: [Change] { preferences.changes }
     let client: StudIPClient
@@ -61,33 +90,34 @@ final class AppStore {
         self.readLaunchAtLogin = readLaunchAtLogin; self.updateLaunchAtLogin = updateLaunchAtLogin
         launchAtLoginStatus = readLaunchAtLogin()
         do { engine = try SyncEngine(manifest: support.appendingPathComponent("manifest.json")) }
-        catch { storageError = error.localizedDescription; message = storageError }
+        catch { storageError = error.localizedDescription; showError(error) }
         do {
             if FileManager.default.fileExists(atPath: settingsURL.path) {
                 preferences = try JSONDecoder().decode(Preferences.self, from: Data(contentsOf: settingsURL))
             }
-        } catch { message = error.localizedDescription }
+        } catch { showError(error, source: .settingsLoad) }
     }
 
     func start() {
         guard !isBusy else { return }
         guard engine != nil else { message = storageError; return }
+        guard feedback[.settingsLoad] == nil else { status = "Settings need attention"; return }
         if !username.isEmpty, !password.isEmpty { connect(); return }
         let read = readCredentials
-        isBusy = true; message = nil; status = "Unlocking saved credentials…"
+        isBusy = true; status = "Unlocking saved credentials…"
         task = Task {
             do {
                 // Keychain may wait for system authorization; keep the app's main actor free.
                 let saved = try await credentialOperation { try read() }
                 try Task.checkCancellation()
                 isBusy = false
-                guard let saved else { status = "Sign-in required"; return }
+                guard let saved else { message = nil; status = "Sign-in required"; return }
                 username = saved.username; password = saved.password
                 connect()
             } catch {
                 isBusy = false
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled" }
-                else { status = "Sign-in required"; message = error.localizedDescription }
+                else { status = "Sign-in required"; showError(error) }
             }
         }
     }
@@ -96,7 +126,7 @@ final class AppStore {
         guard engine != nil else { message = storageError; return }
         let credentials = Credentials(username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
         reconnectPending = false
-        isBusy = true; message = nil; status = "Signing in…"
+        isBusy = true; status = "Signing in…"
         task = Task {
             var syncOnSuccess = false
             defer { isBusy = false; schedule(); if syncOnSuccess { sync() }; resumeAfterNetworkChange() }
@@ -107,7 +137,7 @@ final class AppStore {
                 try await credentialOperation { try write(credentials) }
                 try Task.checkCancellation()
                 try await loadCourseCatalog()
-                signedIn = true; status = "Ready"
+                signedIn = true; status = "Ready"; message = nil; feedback[.catalog] = nil
                 if preferences.selectedCourses.isEmpty && !preferences.setupComplete {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
@@ -118,7 +148,7 @@ final class AppStore {
                 if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled"; return }
                 reconnectPending = canRetryConnection(error)
                 status = reconnectPending ? "Waiting for connection" : "Sign-in required"
-                message = error.localizedDescription
+                showError(error)
             }
         }
     }
@@ -151,11 +181,18 @@ final class AppStore {
     }
     @discardableResult func save() -> Bool {
         do {
-            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: support.path)
+            if feedback[.settingsLoad] != nil {
+                let backup = support.appendingPathComponent("settings-recovery-\(UUID().uuidString).json")
+                try Data(contentsOf: settingsURL).write(to: backup, options: .atomic)
+                try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+            }
             try JSONEncoder().encode(preferences).write(to: settingsURL, options: .atomic)
             try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: settingsURL.path)
+            feedback[.settingsLoad] = nil; feedback[.settingsSave] = nil
             return true
-        } catch { message = error.localizedDescription; return false }
+        } catch { showError(error, source: .settingsSave); return false }
     }
     func chooseDestination() {
         let panel = NSOpenPanel()
@@ -186,20 +223,26 @@ final class AppStore {
     func refreshCourses(semesterID: String? = nil) {
         guard !isBusy, signedIn else { return }
         retrySyncWhenOnline = false
-        isBusy = true; message = nil; status = "Loading courses…"
+        isBusy = true; status = "Loading courses…"
         task = Task {
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
-            do { try await loadCourseCatalog(semesterID: semesterID); status = "Ready" }
-            catch { reportSyncFailure(error) }
+            do { try await loadCourseCatalog(semesterID: semesterID); feedback[.catalog] = nil; status = "Ready" }
+            catch { reportSyncFailure(error, source: .catalog) }
         }
     }
-    private func reportSyncFailure(_ error: Error) {
+    private func reportSyncFailure(_ error: Error, source: MessageSource = .sync) {
         if error is CancellationError || (error as? URLError)?.code == .cancelled { status = "Cancelled"; return }
         if case StudSyncError.authentication = error {
             signedIn = false; reconnectPending = false; status = "Sign-in required"
         } else { status = "Sync needs attention" }
         retrySyncWhenOnline = canRetryConnection(error)
-        message = error.localizedDescription
+        showError(error, source: source)
+    }
+    private func showError(_ error: Error, source: MessageSource = .operation) {
+        // Retryable server failures still need attention; only connectivity failures stay monochrome.
+        let offline = (error as? URLError).map { [.notConnectedToInternet, .networkConnectionLost].contains($0.code) } ?? false
+        feedback[source] = Feedback(text: error.localizedDescription, isOffline: offline,
+                                    isTransportFailure: error is URLError && canRetryConnection(error))
     }
     private func canRetryConnection(_ error: Error) -> Bool {
         if let error = error as? URLError {
@@ -227,7 +270,7 @@ final class AppStore {
     func sync() {
         guard !isBusy, canSync, let engine else { return }
         retrySyncWhenOnline = false
-        isBusy = true; message = nil; completed = 0; total = 0; bytes = 0; status = "Checking courses…"
+        isBusy = true; completed = 0; total = 0; bytes = 0; status = "Checking courses…"
         let selectedIDs = preferences.selectedCourses
         let root = URL(fileURLWithPath: preferences.destination, isDirectory: true)
         task = Task {
@@ -237,7 +280,7 @@ final class AppStore {
                 let selected = courses.filter { selectedIDs.contains($0.id) }
                 guard !selected.isEmpty else {
                     status = "Choose courses"
-                    message = "No selected courses are currently available. Check your course selection in Settings."
+                    feedback[.sync] = Feedback(text: "No selected courses are currently available. Check your course selection in Settings.")
                     return
                 }
                 for course in selected {
@@ -258,7 +301,7 @@ final class AppStore {
                         completed += 1
                     }
                 }
-                preferences.lastSync = Date(); status = "Up to date"; save()
+                preferences.lastSync = Date(); status = "Up to date"; feedback[.sync] = nil; save()
             } catch { reportSyncFailure(error) }
         }
     }
@@ -280,28 +323,37 @@ final class AppStore {
     func setPaused(_ value: Bool) { paused = value; schedule() }
     func setLaunchAtLogin(_ value: Bool) {
         defer { refreshLaunchAtLogin() }
-        do { try updateLaunchAtLogin(value) }
-        catch { message = error.localizedDescription }
+        do {
+            try updateLaunchAtLogin(value)
+            feedback[.launchAtLogin] = nil
+        } catch { showError(error, source: .launchAtLogin) }
     }
     func refreshLaunchAtLogin() { launchAtLoginStatus = readLaunchAtLogin() }
     var launchAtLogin: Bool { launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval }
-    func adoptWebSession(_ cookies: [HTTPCookie]) {
-        guard !isBusy else { return }
+    func adoptWebSession(_ cookies: [HTTPCookie], attempt: UUID) {
+        guard showWebLogin, attempt == webLoginAttempt, !isBusy else { return }
         guard engine != nil else { message = storageError; return }
         isBusy = true
         task = Task {
+            var source = MessageSource.operation
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
+            signedIn = false; reconnectPending = false; retrySyncWhenOnline = false
             do {
                 try await client.adopt(cookies: cookies)
-                signedIn = true; reconnectPending = false; password = ""; showWebLogin = false
+                signedIn = true; reconnectPending = false; password = ""
+                message = nil; source = .catalog
+                try Task.checkCancellation()
                 try await loadCourseCatalog()
-                status = "Ready"; message = nil
+                status = "Ready"; message = nil; feedback[.catalog] = nil; showWebLogin = false
                 if !preferences.setupComplete && preferences.selectedCourses.isEmpty {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
             } catch {
-                reportSyncFailure(error)
-                if case StudSyncError.authentication = error { message = "Finish signing into Stud.IP, then click Continue." }
+                if Task.isCancelled { status = "Cancelled"; return }
+                reportSyncFailure(error, source: source)
+                if case StudSyncError.authentication = error {
+                    feedback[source] = Feedback(text: "Finish signing into Stud.IP, then click Continue.", isSignInHint: true)
+                }
             }
         }
     }

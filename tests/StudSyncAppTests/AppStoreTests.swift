@@ -127,6 +127,8 @@ struct AppStoreTests {
         #expect(!store.signedIn)
         #expect(store.status == "Waiting for connection")
         #expect(store.nextSync != nil)
+        #expect(store.message != nil)
+        #expect(!store.needsAttention)
 
         // Fire the actual timer callback without waiting an hour; 401 proves a new request ran.
         ConnectionFixture.response = { _ in (401, "") }
@@ -134,6 +136,248 @@ struct AppStoreTests {
         try await waitForConnection(store)
         #expect(store.status == "Sign-in required")
         #expect(store.nextSync == nil)
+        #expect(store.needsAttention)
+    }
+    @Test func menuBarErrorStateDistinguishesOfflineFromServerAndOtherFailures() async throws {
+        let store = store()
+        defer { store.setPaused(true) }
+        store.signedIn = true
+        for code in [URLError.notConnectedToInternet, .networkConnectionLost] {
+            ConnectionFixture.response = { _ in throw URLError(code) }
+            store.sync()
+            try await waitForConnection(store)
+            #expect(store.message != nil)
+            #expect(!store.needsAttention)
+        }
+        for online in [false, true] {
+            store.networkChanged(available: online)
+            ConnectionFixture.response = { _ in throw URLError(.timedOut) }
+            store.sync()
+            try await waitForConnection(store)
+            #expect(store.needsAttention == online)
+        }
+        // A retryable HTTP failure is not proof that the Mac has no internet.
+        store.networkChanged(available: false)
+        ConnectionFixture.response = { _ in (503, "") }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { _ in throw URLError(.secureConnectionFailed) }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.status == "Up to date")
+        #expect(!store.needsAttention)
+        store.setPaused(true)
+        #expect(!store.needsAttention)
+    }
+    @Test func lateOfflineNotificationReclassifiesOnlyTransportErrorsInManualMode() async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.signedIn = true
+        store.networkChanged(available: true)
+        ConnectionFixture.response = { _ in throw URLError(.timedOut) }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        store.networkChanged(available: false)
+        #expect(!store.needsAttention)
+        store.networkChanged(available: true)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { _ in (503, "") }
+        store.sync()
+        try await waitForConnection(store)
+        store.networkChanged(available: false)
+        #expect(store.needsAttention)
+    }
+    @Test func catalogRefreshDoesNotClearSyncFailureAndEachRecoversIndependently() async throws {
+        let store = store()
+        defer { store.setPaused(true) }
+        store.signedIn = true
+        ConnectionFixture.response = { _ in throw URLError(.cannotWriteToFile) }
+        store.sync()
+        try await waitForConnection(store)
+        let syncError = store.message
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.refreshCourses()
+        try await waitForConnection(store)
+        #expect(store.message == syncError)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { _ in (503, "") }
+        store.refreshCourses()
+        try await waitForConnection(store)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention) // The catalog failure still needs a successful refresh.
+        store.refreshCourses()
+        #expect(store.needsAttention) // Starting a retry does not establish recovery.
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+    }
+    @Test func actionableCatalogFeedbackTakesPriorityOverAnOfflineSyncMessage() async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.signedIn = true
+        ConnectionFixture.response = { _ in throw URLError(.secureConnectionFailed) }
+        store.refreshCourses()
+        try await waitForConnection(store)
+        let catalogError = store.message
+        ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        #expect(store.message == catalogError)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.refreshCourses()
+        try await waitForConnection(store)
+        #expect(!store.needsAttention)
+        #expect(store.message != nil) // Offline feedback remains until the next successful sync.
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+    }
+    @Test func refreshingCatalogAfterWebAdoptionClearsItsFailure() async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.message = "Old sign-in failure"
+        ConnectionFixture.response = { request in
+            if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            return (503, "")
+        }
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.needsAttention)
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.refreshCourses()
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+    }
+    @Test(arguments: [false, true]) func webSignInHintIsVisibleForAdoptionAndCatalogRejection(_ catalogFailure: Bool) async throws {
+        let store = store()
+        store.preferences.intervalMinutes = 0
+        store.showWebLogin = true
+        store.signedIn = true
+        ConnectionFixture.response = { _ in (401, "") }
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.needsAttention)
+        ConnectionFixture.response = { request in
+            if catalogFailure && request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            return (401, "")
+        }
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        try await waitForConnection(store)
+        #expect(!store.signedIn)
+        #expect(store.message == "Finish signing into Stud.IP, then click Continue.")
+        #expect(store.needsAttention)
+        #expect(store.showWebLogin)
+        store.showWebLogin = false
+        #expect(store.message == "Use University web login… to sign in again.")
+        store.showWebLogin = true
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(!store.showWebLogin)
+        #expect(store.message != "Finish signing into Stud.IP, then click Continue.")
+        #expect(store.needsAttention) // Signing in does not itself repair the earlier failed sync.
+        store.sync()
+        try await waitForConnection(store)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+    }
+    @Test func delayedCookiesFromDismissedOrReopenedWebLoginCannotStartAdoption() async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = store(support: support)
+        defer { store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+        store.preferences.setupComplete = false; store.preferences.selectedCourses = []
+        store.showWebLogin = true
+        let dismissed = store.webLoginAttempt
+        store.showWebLogin = false
+        store.showWebLogin = true
+        let reopened = store.webLoginAttempt
+        #expect(dismissed != reopened)
+        ConnectionFixture.response = { _ in Issue.record("Stale cookie callbacks must not start requests"); throw URLError(.badURL) }
+        store.adoptWebSession([], attempt: dismissed)
+        #expect(!store.isBusy)
+        #expect(!store.signedIn)
+        #expect(store.preferences.selectedCourses.isEmpty)
+        store.showWebLogin = false
+        store.adoptWebSession([], attempt: reopened)
+        #expect(!store.isBusy)
+        store.showWebLogin = true
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.preferences.selectedCourses == ["cc"])
+        #expect(!store.showWebLogin)
+    }
+    @Test func settingsLoadFailureRemainsVisibleAlongsideWebSignInGuidance() async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let settings = support.appendingPathComponent("settings.json")
+        try Data("invalid settings".utf8).write(to: settings)
+        let store = store(support: support)
+        let settingsError = try #require(store.message)
+        store.showWebLogin = true
+        ConnectionFixture.response = { _ in (401, "") }
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        try await waitForConnection(store)
+        #expect(store.messages.contains(settingsError))
+        #expect(store.messages.contains("Finish signing into Stud.IP, then click Continue."))
+        store.showWebLogin = false
+        #expect(store.messages.contains(settingsError))
+        #expect(store.messages.contains("Use University web login… to sign in again."))
+        #expect(try Data(contentsOf: settings) == Data("invalid settings".utf8))
+        #expect(store.save())
+        #expect(!store.messages.contains(settingsError))
+        #expect(store.needsAttention)
+    }
+    @Test(arguments: [false, true]) func cancellingWebSignInStopsCatalogChangesAndPreservesCompletedAdoption(_ afterAdoption: Bool) async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = store(support: support)
+        store.preferences.setupComplete = false; store.preferences.selectedCourses = []
+        store.preferences.intervalMinutes = 0; store.showWebLogin = true; store.signedIn = true
+        let blocked = RequestCount()
+        let release = DispatchSemaphore(value: 0)
+        defer { store.cancel(); release.signal(); store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+        ConnectionFixture.response = { request in
+            let path = request.url!.path
+            if path.hasSuffix(afterAdoption ? "/courses" : "users/me") {
+                _ = blocked.increment()
+                if release.wait(timeout: .now() + 5) != .success { throw URLError(.timedOut) }
+            }
+            if path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            if path.hasSuffix("/courses") { return (200, #"{"data":[{"id":"cc","attributes":{"title":"Course"}}]}"#) }
+            return (200, #"{"data":[]}"#)
+        }
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        let deadline = Date().addingTimeInterval(3)
+        while blocked.total == 0 && Date() < deadline { await Task.yield() }
+        try #require(blocked.total == 1)
+        #expect(store.signedIn == afterAdoption)
+        store.cancel(); store.showWebLogin = false
+        release.signal()
+        try await waitForConnection(store)
+        #expect(store.status == "Cancelled")
+        #expect(store.signedIn == afterAdoption)
+        #expect(store.preferences.selectedCourses.isEmpty)
+        #expect(store.courses.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: support.appendingPathComponent("settings.json").path))
     }
     @Test func manualAndPausedModesDoNotRetryOfflineStartup() async throws {
         ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
@@ -161,7 +405,8 @@ struct AppStoreTests {
             if path.hasSuffix("/courses") { return (200, #"{"data":[{"id":"cc","attributes":{"title":"Course"}}]}"#) }
             return (200, path.hasSuffix("users/me") ? #"{"data":{"id":"bb"}}"# : #"{"data":[]}"#)
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         store.runScheduledSync()
@@ -222,7 +467,59 @@ struct AppStoreTests {
         #expect(!store.isBusy)
         #expect(store.preferences.lastSync == nil)
         #expect(store.message != nil)
+        #expect(store.needsAttention)
         #expect(store.status == "Settings need attention")
+    }
+    @Test func corruptSettingsStayVisibleAtStartupUntilSavedAndDoNotClearOtherErrors() throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        try Data("invalid settings".utf8).write(to: support.appendingPathComponent("settings.json"))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: support.path)
+        let store = AppStore(support: support, readCredentials: {
+            Issue.record("Startup must leave corrupt settings visible before reading credentials")
+            return nil
+        })
+        let error = store.message
+        #expect(error != nil)
+        #expect(store.needsAttention)
+        store.start()
+        #expect(!store.isBusy)
+        #expect(store.message == error)
+        #expect(store.needsAttention)
+        #expect(store.save())
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+        #expect(try FileManager.default.attributesOfItem(atPath: support.path)[.posixPermissions] as? Int == 0o700)
+        let backups = try FileManager.default.contentsOfDirectory(at: support, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("settings-recovery-") }
+        #expect(backups.count == 1)
+        let backup = try #require(backups.first)
+        #expect(try Data(contentsOf: backup) == Data("invalid settings".utf8))
+        #expect(try FileManager.default.attributesOfItem(atPath: backup.path)[.posixPermissions] as? Int == 0o600)
+        try Data("invalid again".utf8).write(to: support.appendingPathComponent("settings.json"))
+        let other = AppStore(support: support)
+        other.message = "Unrelated failure"
+        #expect(other.save())
+        #expect(other.message == "Unrelated failure")
+        #expect(other.needsAttention)
+    }
+    @Test func successfulSettingsSaveClearsOnlyItsOwnFailure() throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        let store = store(support: support)
+        let settings = support.appendingPathComponent("settings.json")
+        for previous in [nil, "Unresolved sync failure"] as [String?] {
+            store.message = previous
+            try FileManager.default.createDirectory(at: settings, withIntermediateDirectories: true)
+            #expect(!store.save())
+            #expect(store.needsAttention)
+            try FileManager.default.removeItem(at: settings)
+            #expect(store.save())
+            #expect(store.message == previous)
+            #expect(store.needsAttention == (previous != nil))
+            try FileManager.default.removeItem(at: settings)
+        }
     }
     @Test func courseRefreshPreservesSelectionAndSyncUsesTheCurrentList() async throws {
         let store = store()
@@ -244,6 +541,7 @@ struct AppStoreTests {
         #expect(store.preferences.selectedCourses == ["cc"])
         #expect(store.preferences.lastSync == nil)
         #expect(store.status == "Choose courses")
+        #expect(store.needsAttention)
     }
     @Test func refreshFailurePreservesCoursesAndRejectedSessionStopsScheduling() async throws {
         let store = store()
@@ -354,9 +652,25 @@ struct AppStoreTests {
         store.setLaunchAtLogin(false)
         #expect(store.launchAtLogin)
         #expect(store.message != nil)
+        #expect(store.needsAttention)
         rejectChange = false
         store.setLaunchAtLogin(false)
         #expect(!store.launchAtLogin)
+        #expect(store.message == nil)
+        #expect(!store.needsAttention)
+        rejectChange = true
+        store.setLaunchAtLogin(true)
+        store.message = "Unrelated sync failure"
+        rejectChange = false
+        store.setLaunchAtLogin(true)
+        #expect(store.message == "Unrelated sync failure")
+        #expect(store.needsAttention)
+        rejectChange = true
+        store.setLaunchAtLogin(false)
+        rejectChange = false
+        store.setLaunchAtLogin(false)
+        #expect(store.message == "Unrelated sync failure")
+        #expect(store.needsAttention)
         status = .enabled
         store.refreshLaunchAtLogin()
         #expect(store.launchAtLogin)
@@ -404,7 +718,8 @@ struct AppStoreTests {
         store.refreshCourses(semesterID: "bb")
         try await waitForConnection(store)
         #expect(store.preferences.selectedCourses == ["cc", "dd"])
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.preferences.selectedCourses == ["cc", "dd"])
         store.finishSetup()
@@ -477,7 +792,8 @@ struct AppStoreTests {
             if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
             throw URLError(.notConnectedToInternet)
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.password.isEmpty)
@@ -549,7 +865,8 @@ struct AppStoreTests {
         #expect(store.status == "Cancelled")
         #expect(!store.signedIn)
         #expect(store.courses.isEmpty)
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.status == "Ready")
