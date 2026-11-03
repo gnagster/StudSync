@@ -31,6 +31,13 @@ final class AppStore {
     var needsAttention: Bool {
         feedback.values.contains(where: requiresAttention)
     }
+    var messages: [String] {
+        var result = message.map { [$0] } ?? []
+        for entry in MessageSource.allCases.compactMap({ feedback[$0] }) where !entry.isSignInHint && !result.contains(entry.text) {
+            result.append(entry.text)
+        }
+        return result
+    }
     private enum MessageSource: CaseIterable { case settingsSave, settingsLoad, launchAtLogin, sync, catalog, operation }
     private struct Feedback { let text: String; var isOffline = false; var isTransportFailure = false; var isSignInHint = false }
     // Independent failures clear only when their corresponding operation recovers.
@@ -327,16 +334,19 @@ final class AppStore {
         task = Task {
             var source = MessageSource.operation
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
+            signedIn = false; reconnectPending = false; retrySyncWhenOnline = false
             do {
                 try await client.adopt(cookies: cookies)
                 signedIn = true; reconnectPending = false; password = ""
                 message = nil; source = .catalog
+                try Task.checkCancellation()
                 try await loadCourseCatalog()
                 status = "Ready"; message = nil; feedback[.catalog] = nil; showWebLogin = false
                 if !preferences.setupComplete && preferences.selectedCourses.isEmpty {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
             } catch {
+                if Task.isCancelled { status = "Cancelled"; return }
                 reportSyncFailure(error, source: source)
                 if case StudSyncError.authentication = error {
                     feedback[source] = Feedback(text: "Finish signing into Stud.IP, then click Continue.", isSignInHint: true)

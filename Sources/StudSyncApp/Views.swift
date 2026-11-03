@@ -36,7 +36,7 @@ struct StatusPanel: View {
                 stat("Courses", value: String(store.preferences.selectedCourses.count))
             }
             if store.bytes > 0 { Text(ByteCountFormatter.string(fromByteCount: store.bytes, countStyle: .file)).font(.caption).foregroundStyle(.secondary) }
-            if let message = store.message {
+            ForEach(store.messages, id: \.self) { message in
                 Text(L(message)).font(.caption).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
@@ -95,14 +95,17 @@ struct WebLogin: View {
                 HStack {
                     Text(L("Finish the official university sign-in, then continue.")).font(.caption)
                     Spacer()
-                    Button(L("Cancel")) { store.showWebLogin = false }
+                    Button(L("Cancel")) { store.cancel(); store.showWebLogin = false }
                     Button(L("Continue")) {
                         webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
-                            Task { @MainActor in store.adoptWebSession(cookies) }
+                            Task { @MainActor in
+                                guard store.showWebLogin else { return }
+                                store.adoptWebSession(cookies)
+                            }
                         }
                     }.buttonStyle(.borderedProminent).disabled(store.isBusy)
                 }
-                if let message = store.message {
+                ForEach(store.messages, id: \.self) { message in
                     Text(L(message)).font(.caption).foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
                 }

@@ -293,6 +293,60 @@ struct AppStoreTests {
         #expect(store.message == nil)
         #expect(!store.needsAttention)
     }
+    @Test func settingsLoadFailureRemainsVisibleAlongsideWebSignInGuidance() async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: support) }
+        try FileManager.default.createDirectory(at: support, withIntermediateDirectories: true)
+        let settings = support.appendingPathComponent("settings.json")
+        try Data("invalid settings".utf8).write(to: settings)
+        let store = store(support: support)
+        let settingsError = try #require(store.message)
+        store.showWebLogin = true
+        ConnectionFixture.response = { _ in (401, "") }
+        store.adoptWebSession([])
+        try await waitForConnection(store)
+        #expect(store.messages.contains(settingsError))
+        #expect(store.messages.contains("Finish signing into Stud.IP, then click Continue."))
+        store.showWebLogin = false
+        #expect(store.messages.contains(settingsError))
+        #expect(store.messages.contains("Use University web login… to sign in again."))
+        #expect(try Data(contentsOf: settings) == Data("invalid settings".utf8))
+        #expect(store.save())
+        #expect(!store.messages.contains(settingsError))
+        #expect(store.needsAttention)
+    }
+    @Test(arguments: [false, true]) func cancellingWebSignInStopsCatalogChangesAndPreservesCompletedAdoption(_ afterAdoption: Bool) async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = store(support: support)
+        store.preferences.setupComplete = false; store.preferences.selectedCourses = []
+        store.preferences.intervalMinutes = 0; store.showWebLogin = true; store.signedIn = true
+        let blocked = RequestCount()
+        let release = DispatchSemaphore(value: 0)
+        defer { store.cancel(); release.signal(); store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+        ConnectionFixture.response = { request in
+            let path = request.url!.path
+            if path.hasSuffix(afterAdoption ? "/courses" : "users/me") {
+                _ = blocked.increment()
+                if release.wait(timeout: .now() + 5) != .success { throw URLError(.timedOut) }
+            }
+            if path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
+            if path.hasSuffix("/courses") { return (200, #"{"data":[{"id":"cc","attributes":{"title":"Course"}}]}"#) }
+            return (200, #"{"data":[]}"#)
+        }
+        store.adoptWebSession([])
+        let deadline = Date().addingTimeInterval(3)
+        while blocked.total == 0 && Date() < deadline { await Task.yield() }
+        try #require(blocked.total == 1)
+        #expect(store.signedIn == afterAdoption)
+        store.cancel(); store.showWebLogin = false
+        release.signal()
+        try await waitForConnection(store)
+        #expect(store.status == "Cancelled")
+        #expect(store.signedIn == afterAdoption)
+        #expect(store.preferences.selectedCourses.isEmpty)
+        #expect(store.courses.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: support.appendingPathComponent("settings.json").path))
+    }
     @Test func manualAndPausedModesDoNotRetryOfflineStartup() async throws {
         ConnectionFixture.response = { _ in throw URLError(.notConnectedToInternet) }
         for paused in [true, false] {
