@@ -249,7 +249,8 @@ struct AppStoreTests {
             if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
             return (503, "")
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.needsAttention)
@@ -272,7 +273,8 @@ struct AppStoreTests {
             if catalogFailure && request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
             return (401, "")
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(!store.signedIn)
         #expect(store.message == "Finish signing into Stud.IP, then click Continue.")
@@ -282,7 +284,8 @@ struct AppStoreTests {
         #expect(store.message == "Use University web login… to sign in again.")
         store.showWebLogin = true
         try serveCourses([Course(id: "cc", title: "Course")])
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(!store.showWebLogin)
@@ -292,6 +295,33 @@ struct AppStoreTests {
         try await waitForConnection(store)
         #expect(store.message == nil)
         #expect(!store.needsAttention)
+    }
+    @Test func delayedCookiesFromDismissedOrReopenedWebLoginCannotStartAdoption() async throws {
+        let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let store = store(support: support)
+        defer { store.setPaused(true); try? FileManager.default.removeItem(at: support) }
+        store.preferences.setupComplete = false; store.preferences.selectedCourses = []
+        store.showWebLogin = true
+        let dismissed = store.webLoginAttempt
+        store.showWebLogin = false
+        store.showWebLogin = true
+        let reopened = store.webLoginAttempt
+        #expect(dismissed != reopened)
+        ConnectionFixture.response = { _ in Issue.record("Stale cookie callbacks must not start requests"); throw URLError(.badURL) }
+        store.adoptWebSession([], attempt: dismissed)
+        #expect(!store.isBusy)
+        #expect(!store.signedIn)
+        #expect(store.preferences.selectedCourses.isEmpty)
+        store.showWebLogin = false
+        store.adoptWebSession([], attempt: reopened)
+        #expect(!store.isBusy)
+        store.showWebLogin = true
+        try serveCourses([Course(id: "cc", title: "Course")])
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
+        try await waitForConnection(store)
+        #expect(store.signedIn)
+        #expect(store.preferences.selectedCourses == ["cc"])
+        #expect(!store.showWebLogin)
     }
     @Test func settingsLoadFailureRemainsVisibleAlongsideWebSignInGuidance() async throws {
         let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -303,7 +333,8 @@ struct AppStoreTests {
         let settingsError = try #require(store.message)
         store.showWebLogin = true
         ConnectionFixture.response = { _ in (401, "") }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.messages.contains(settingsError))
         #expect(store.messages.contains("Finish signing into Stud.IP, then click Continue."))
@@ -333,7 +364,8 @@ struct AppStoreTests {
             if path.hasSuffix("/courses") { return (200, #"{"data":[{"id":"cc","attributes":{"title":"Course"}}]}"#) }
             return (200, #"{"data":[]}"#)
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         let deadline = Date().addingTimeInterval(3)
         while blocked.total == 0 && Date() < deadline { await Task.yield() }
         try #require(blocked.total == 1)
@@ -373,7 +405,8 @@ struct AppStoreTests {
             if path.hasSuffix("/courses") { return (200, #"{"data":[{"id":"cc","attributes":{"title":"Course"}}]}"#) }
             return (200, path.hasSuffix("users/me") ? #"{"data":{"id":"bb"}}"# : #"{"data":[]}"#)
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         store.runScheduledSync()
@@ -685,7 +718,8 @@ struct AppStoreTests {
         store.refreshCourses(semesterID: "bb")
         try await waitForConnection(store)
         #expect(store.preferences.selectedCourses == ["cc", "dd"])
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.preferences.selectedCourses == ["cc", "dd"])
         store.finishSetup()
@@ -758,7 +792,8 @@ struct AppStoreTests {
             if request.url!.path.hasSuffix("users/me") { return (200, #"{"data":{"id":"bb"}}"#) }
             throw URLError(.notConnectedToInternet)
         }
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.password.isEmpty)
@@ -830,7 +865,8 @@ struct AppStoreTests {
         #expect(store.status == "Cancelled")
         #expect(!store.signedIn)
         #expect(store.courses.isEmpty)
-        store.adoptWebSession([])
+        store.showWebLogin = true
+        store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.status == "Ready")

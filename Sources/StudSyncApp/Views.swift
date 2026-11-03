@@ -97,10 +97,10 @@ struct WebLogin: View {
                     Spacer()
                     Button(L("Cancel")) { store.cancel(); store.showWebLogin = false }
                     Button(L("Continue")) {
+                        let attempt = store.webLoginAttempt
                         webView.configuration.websiteDataStore.httpCookieStore.getAllCookies { cookies in
                             Task { @MainActor in
-                                guard store.showWebLogin else { return }
-                                store.adoptWebSession(cookies)
+                                store.adoptWebSession(cookies, attempt: attempt)
                             }
                         }
                     }.buttonStyle(.borderedProminent).disabled(store.isBusy)

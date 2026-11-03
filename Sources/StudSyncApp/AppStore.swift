@@ -52,7 +52,10 @@ final class AppStore {
     var completed = 0
     var total = 0
     var bytes: Int64 = 0
-    var showWebLogin = false
+    var showWebLogin = false {
+        didSet { if showWebLogin != oldValue { webLoginAttempt = UUID() } }
+    }
+    private(set) var webLoginAttempt = UUID()
     private(set) var launchAtLoginStatus: SMAppService.Status
     var changes: [Change] { preferences.changes }
     let client: StudIPClient
@@ -327,8 +330,8 @@ final class AppStore {
     }
     func refreshLaunchAtLogin() { launchAtLoginStatus = readLaunchAtLogin() }
     var launchAtLogin: Bool { launchAtLoginStatus == .enabled || launchAtLoginStatus == .requiresApproval }
-    func adoptWebSession(_ cookies: [HTTPCookie]) {
-        guard !isBusy else { return }
+    func adoptWebSession(_ cookies: [HTTPCookie], attempt: UUID) {
+        guard showWebLogin, attempt == webLoginAttempt, !isBusy else { return }
         guard engine != nil else { message = storageError; return }
         isBusy = true
         task = Task {
