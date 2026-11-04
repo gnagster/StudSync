@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 scan=true
-if [[ "${GITHUB_EVENT_NAME:-}" == pull_request || ( "${GITHUB_EVENT_NAME:-}" == push && -n "${STUDSYNC_BASE_SHA:-}" && "$STUDSYNC_BASE_SHA" != 0000000000000000000000000000000000000000 ) ]]; then
+if [[ "${GITHUB_EVENT_NAME:-}" == pull_request || "${GITHUB_EVENT_NAME:-}" == pull_request_review || ( "${GITHUB_EVENT_NAME:-}" == push && -n "${STUDSYNC_BASE_SHA:-}" && "$STUDSYNC_BASE_SHA" != 0000000000000000000000000000000000000000 ) ]]; then
     if [[ ! "${STUDSYNC_BASE_SHA:-}" =~ ^[0-9a-fA-F]{40}$ ]]; then exit 2; fi
     paths="$(mktemp)"
     trap 'rm -f "$paths"' EXIT

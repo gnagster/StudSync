@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+"$ROOT/script/test_review_gate.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/repo/Sources" "$scratch/repo/docs" "$scratch/db"
@@ -28,6 +29,9 @@ echo 'Agent instructions' > AGENTS.md
 echo 'Security instructions' > SECURITY.md
 git add .; git commit -qm docs
 scope false
+: > "$scratch/output"
+GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
+grep -Fxq 'scan=false' "$scratch/output"
 : > "$scratch/output"
 GITHUB_EVENT_NAME=push STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
 grep -Fxq 'scan=false' "$scratch/output"
