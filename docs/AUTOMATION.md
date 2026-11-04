@@ -22,4 +22,4 @@ Batch related roadmap work and prepare regression coverage before one push, redu
 
 After reviewed app or runtime-dependency changes merge and master passes CI, the developer publishes the next appropriate version through that existing release procedure and verifies the public archive/feed. Documentation-only changes do not trigger app releases. Build/signing/publication failures leave drafts unpublished and require a concrete handoff, not a weaker check or a duplicate release.
 
-Rollout: merge the workflow PR with the existing checks/review first; require Change scope alongside the existing native/CodeQL/CodeRabbit contexts before relying on deferred checks. Do not remove valid requirements or add substitute statuses. Confirm a post-rollout reviewed PR actually reports the required checks.
+Rollout PR #33 adds Change scope as a required GitHub Actions check alongside the existing native/CodeQL/CodeRabbit contexts, with strict updates preserved. Merge only after its hosted review and checks pass. Do not remove valid requirements or add substitute statuses. Confirm a post-rollout reviewed PR actually reports the required checks.

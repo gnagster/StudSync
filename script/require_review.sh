@@ -4,9 +4,10 @@ set -euo pipefail
 [[ "${GITHUB_EVENT_NAME:-}" == pull_request_review ]] || exit 0
 number="$(jq -er '.pull_request.number' "$GITHUB_EVENT_PATH")"
 expected="$(jq -er '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
+base="$(jq -er '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
 repo="${GITHUB_REPOSITORY:?}"
 pr="$(gh api "repos/$repo/pulls/$number")"
-jq -e --arg sha "$expected" '.state == "open" and .draft == false and .head.sha == $sha' <<< "$pr" > /dev/null
+jq -e --arg sha "$expected" --arg base "$base" '.state == "open" and .draft == false and .head.sha == $sha and .base.sha == $base' <<< "$pr" > /dev/null
 reviews="$(gh api --paginate --slurp "repos/$repo/pulls/$number/reviews?per_page=100")"
 jq -e --arg sha "$expected" '
   [ .[][] | select(.user.login == "coderabbitai[bot]" and .user.type == "Bot") ]

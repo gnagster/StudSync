@@ -19,8 +19,8 @@ fi
 MOCK
 chmod +x "$scratch/bin/gh"
 export PATH="$scratch/bin:$PATH" REVIEW_FIXTURE="$scratch" GITHUB_EVENT_NAME=pull_request_review GITHUB_REPOSITORY=owner/repo GITHUB_EVENT_PATH="$scratch/event"
-echo '{"pull_request":{"number":1,"head":{"sha":"reviewed"}}}' > "$scratch/event"
-echo '{"state":"open","draft":false,"head":{"sha":"reviewed"}}' > "$scratch/pr"
+echo '{"pull_request":{"number":1,"head":{"sha":"reviewed"},"base":{"sha":"base"}}}' > "$scratch/event"
+echo '{"state":"open","draft":false,"head":{"sha":"reviewed"},"base":{"sha":"base"}}' > "$scratch/pr"
 echo '[[{"id":1,"user":{"login":"coderabbitai[bot]","type":"Bot"},"state":"APPROVED","commit_id":"reviewed"}]]' > "$scratch/reviews"
 echo '[{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}}]' > "$scratch/threads"
 "$ROOT/script/require_review.sh"
@@ -44,7 +44,9 @@ jq '.[1] = .[0] | .[1].data.repository.pullRequest.reviewThreads.nodes[0].isReso
 reject 'unresolved thread on another page'
 echo '[{"errors":[{"message":"denied"}]}]' > "$scratch/threads"; reject 'missing GraphQL data'
 cp "$scratch/resolved" "$scratch/threads"
-echo '{"state":"open","draft":false,"head":{"sha":"new"}}' > "$scratch/pr"; reject 'new head'
-echo '{"state":"closed","draft":false,"head":{"sha":"reviewed"}}' > "$scratch/pr"; reject 'closed PR'
+echo '{"state":"open","draft":false,"head":{"sha":"new"},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'new head'
+echo '{"state":"closed","draft":false,"head":{"sha":"reviewed"},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'closed PR'
+echo '{"state":"open","draft":true,"head":{"sha":"reviewed"},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'draft PR'
+echo '{"state":"open","draft":false,"head":{"sha":"reviewed"},"base":{"sha":"changed"}}' > "$scratch/pr"; reject 'changed base'
 GITHUB_EVENT_NAME=push "$ROOT/script/require_review.sh"
 echo 'Review gate regressions passed.'
