@@ -13,6 +13,18 @@ jq -e --arg sha "$expected" '
   [ .[][] | select(.user.login == "coderabbitai[bot]" and .user.type == "Bot") ]
   | max_by(.id) | .state == "APPROVED" and .commit_id == $sha
 ' <<< "$reviews" > /dev/null
+comments="$(gh api --paginate --slurp "repos/$repo/issues/$number/comments?per_page=100")"
+jq -e --arg sha "$expected" '
+  [ .[][] | select(.user.login == "chatgpt-codex-connector[bot]" and .user.type == "Bot")
+    | select(.body | contains("<!-- codex-review-state:v1 ")) ]
+  | max_by(.id) | .body
+  | capture("<!-- codex-review-state:v1 (?<state>[^\\r\\n]+) -->").state | fromjson
+  | (.code_review | .status == "completed" and .commit_sha == $sha
+      and .has_any_findings == false and .has_unresolved_findings == false)
+    and (.security_review | .status == null or
+      (.status == "completed" and .commit_sha == $sha
+       and .has_any_findings == false and .has_unresolved_findings == false))
+' <<< "$comments" > /dev/null
 threads="$(gh api graphql --paginate --slurp -F owner="${repo%/*}" -F name="${repo#*/}" -F number="$number" -f query='
 query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
   repository(owner:$owner, name:$name) {
@@ -27,4 +39,4 @@ query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
 jq -e 'length > 0 and all(.[]; .data.repository.pullRequest.reviewThreads.nodes != null and all(.data.repository.pullRequest.reviewThreads.nodes[]; .isResolved == true))' <<< "$threads" > /dev/null
 # Do not authorize a different head if the branch changed during the queries.
 gh api "repos/$repo/pulls/$number" --jq '.head.sha' | grep -Fxq "$expected"
-echo "CodeRabbit approved $expected; all review conversations are resolved."
+echo "Codex completed cleanly and CodeRabbit approved $expected; all review conversations are resolved."

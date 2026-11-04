@@ -24,7 +24,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Require current-head CodeRabbit approval and resolved feedback
+      - name: Require both current-head reviews and resolved feedback
         env:
           GH_TOKEN: ${{ github.token }}
         run: ./script/require_review.sh
