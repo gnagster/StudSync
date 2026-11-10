@@ -67,3 +67,20 @@ import StudSyncCore
         #expect(Set(heights.map { Int($0) }).count > 1)
     }
 }
+
+@MainActor struct OnboardingWindowTests {
+    @Test func everyOnboardingPageFitsAtSettingsWidth() throws {
+        _ = NSApplication.shared
+        let store = try ReadmeScreenshots.sampleStore()
+        var heights: [CGFloat] = []
+        for step in SetupStep.allCases {
+            let window = NSWindow(contentViewController: AppWindows.makeOnboarding(store, step: step))
+            defer { window.close() }
+            let content = window.contentRect(forFrameRect: window.frame)
+            #expect(abs(content.width - SettingsLayout.width) < 1, "\(step) width \(content.width)")
+            #expect(content.height > 200 && content.height < 600, "\(step) height \(content.height)")
+            heights.append(content.height)
+        }
+        print("onboarding page heights:", heights)
+    }
+}

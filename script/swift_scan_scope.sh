@@ -10,7 +10,7 @@ if [[ "${GITHUB_EVENT_NAME:-}" == pull_request || ( "${GITHUB_EVENT_NAME:-}" == 
     if [[ -s "$paths" ]]; then
         scan=false
         while IFS= read -r -d '' path; do
-            case "$path" in README.md|AGENTS.md|SECURITY.md|docs/*.md) ;;
+            case "$path" in README.md|README.de.md|CONTRIBUTING.md|AGENTS.md|SECURITY.md|docs/*.md) ;;
                 *) scan=true; break ;;
             esac
         done < "$paths"

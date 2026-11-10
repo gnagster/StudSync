@@ -27,7 +27,7 @@ extension AppStore {
 struct SetupView: View {
     @Bindable var store: AppStore
     var close: () -> Void = {}
-    @State private var step: SetupStep = .account
+    @State var step: SetupStep = .account
     @State private var folders: [String] = []
 
     static let suggestedFolder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -43,12 +43,12 @@ struct SetupView: View {
                 case .review: firstSync
                 }
             }
-            .padding(.horizontal, 32).padding(.top, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 20)
             if step != .review { FeedbackBar(store: store) }
             footer
         }
-        .frame(width: 520, height: 600)
+        .frame(width: SettingsLayout.width)
+        .fixedSize(horizontal: false, vertical: true)
         .sheet(isPresented: $store.showWebLogin) { WebLogin(store: store) }
         .onChange(of: store.preferences.intervalMinutes) { store.save(); store.schedule() }
         .onChange(of: store.isBusy) { if step == .review { loadFolders() } }
@@ -59,7 +59,7 @@ struct SetupView: View {
 
     private var account: some View {
         VStack(spacing: 16) {
-            Image(nsImage: AppImages.logo).resizable().scaledToFit().frame(width: 64, height: 64).accessibilityHidden(true)
+            Image(nsImage: AppImages.logo).resizable().scaledToFit().frame(width: 56, height: 56).accessibilityHidden(true)
             heading("Connect to Stud.IP", "Sign in with your Universität Göttingen account. Your password stays in your Mac’s Keychain.")
             if store.signedIn {
                 Label(String(format: L("Signed in as %@"), store.username.isEmpty ? L("University web login") : store.username),
@@ -88,7 +88,7 @@ struct SetupView: View {
     private var courses: some View {
         VStack(spacing: 16) {
             heading("Which courses?", "Your current semester is already selected. You can change this later in Settings.")
-            CoursePicker(store: store, listHeight: 252)
+            CoursePicker(store: store, listHeight: 260)
         }
         .onAppear {
             if store.preferences.selectedCourses.isEmpty { store.preferences.selectedCourses = Set(store.visibleCourses.map(\.id)) }
@@ -120,7 +120,7 @@ struct SetupView: View {
             Text(L(title)).font(.title2.weight(.semibold))
             Text(L(subtitle)).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
         }
-        .frame(maxWidth: 400)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: Footer
@@ -134,7 +134,7 @@ struct SetupView: View {
                     Button(L("Back")) { step = SetupStep(rawValue: step.rawValue - 1) ?? .account }.disabled(store.isBusy)
                 }
             }
-            .frame(width: 120, alignment: .leading)
+            .frame(width: 112, alignment: .leading)
             Spacer()
             HStack(spacing: 8) {
                 ForEach(SetupStep.allCases, id: \.rawValue) { item in
@@ -143,10 +143,10 @@ struct SetupView: View {
             }
             .accessibilityElement().accessibilityLabel(String(format: L("Step %lld of %lld"), step.rawValue + 1, SetupStep.allCases.count))
             Spacer()
-            primary.buttonStyle(.borderedProminent).controlSize(.large).keyboardShortcut(.defaultAction)
-                .frame(width: 120, alignment: .trailing)
+            primary.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).fixedSize()
+                .frame(width: 112, alignment: .trailing)
         }
-        .padding(.horizontal, 20).padding(.vertical, 16)
+        .padding(.horizontal, 24).padding(.vertical, 16)
         .overlay(alignment: .top) { Divider() }
     }
 

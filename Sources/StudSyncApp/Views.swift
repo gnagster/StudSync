@@ -7,8 +7,11 @@ import StudSyncCore
 let appResourceBundle = Bundle.main.resourceURL
     .flatMap { Bundle(url: $0.appendingPathComponent("StudSync_StudSyncApp.bundle")) } ?? .module
 
+/// Strings come from the app bundle; README screenshots switch it to render each language.
+nonisolated(unsafe) var localizationBundle = appResourceBundle
+
 func L(_ key: String) -> String {
-    NSLocalizedString(key, bundle: appResourceBundle, comment: "")
+    NSLocalizedString(key, bundle: localizationBundle, comment: "")
 }
 
 struct StatusPanel: View {

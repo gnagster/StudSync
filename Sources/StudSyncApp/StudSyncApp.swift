@@ -35,19 +35,25 @@ enum AppWindows {
     static func showOnboarding(_ store: AppStore) {
         settings?.close()
         let window = setup ?? {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
-                                  styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-            window.title = "StudSync"
-            window.titlebarAppearsTransparent = true
+            let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.title = L("Set Up StudSync")
             window.isReleasedWhenClosed = false
             setup = window
             return window
         }()
         if !window.isVisible {
-            window.contentView = NSHostingView(rootView: SetupView(store: store, close: { setup?.close() }))
+            window.contentViewController = makeOnboarding(store, close: { setup?.close() })
             window.center()
         }
         present(window)
+    }
+
+    /// The assistant sized to its current page; the window follows the page height.
+    static func makeOnboarding(_ store: AppStore, step: SetupStep = .account, close: @escaping () -> Void = {}) -> NSViewController {
+        let hosting = NSHostingController(rootView: SetupView(store: store, close: close, step: step))
+        hosting.sizingOptions = .preferredContentSize
+        hosting.view.frame.size = hosting.sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        return hosting
     }
 
     private static func present(_ window: NSWindow) {
