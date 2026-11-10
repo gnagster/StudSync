@@ -35,12 +35,12 @@ enum AppWindows {
 
     private static func setupWindow(_ store: AppStore) -> NSWindow {
         if let setup { return setup }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
-                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
+                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
         window.title = "StudSync"
-        window.minSize = NSSize(width: 540, height: 550)
+        window.titlebarAppearsTransparent = true
         window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SetupView(store: store))
+        window.contentView = NSHostingView(rootView: SetupView(store: store, close: { setup?.close() }))
         window.center()
         setup = window
         return window

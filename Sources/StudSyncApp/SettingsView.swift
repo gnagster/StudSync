@@ -145,19 +145,20 @@ struct AccountRows: View {
 
 struct SignInFields: View {
     @Bindable var store: AppStore
+    var showsActions = true
     var body: some View {
         TextField(L("Username"), text: $store.username, prompt: Text(L("Without email suffix")))
             .textContentType(.username).disabled(store.isBusy)
         SecureField(L("Password"), text: $store.password).textContentType(.password).disabled(store.isBusy)
             .onSubmit { if !store.username.isEmpty && !store.password.isEmpty && !store.isBusy { store.connect() } }
-        HStack {
+        if showsActions { HStack {
             Button(L("University web login…")) { store.showWebLogin = true }.disabled(store.isBusy)
             Spacer()
             if store.isBusy { ProgressView().controlSize(.small) }
             Button(L("Sign in")) { store.connect() }
                 .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                 .disabled(store.username.isEmpty || store.password.isEmpty || store.isBusy)
-        }
+        } }
     }
 }
 
