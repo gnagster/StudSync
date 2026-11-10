@@ -119,3 +119,6 @@
 "Your course folders will appear here." = "Hier erscheinen deine Kursordner.";
 "No course folders yet." = "Noch keine Kursordner.";
 "%lld more" = "%lld weitere";
+"Notify about new files" = "Bei neuen Dateien benachrichtigen";
+"New files in %@" = "Neue Dateien in %@";
+"%lld new files" = "%lld neue Dateien";

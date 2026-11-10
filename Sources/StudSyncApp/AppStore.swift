@@ -60,6 +60,8 @@ final class AppStore {
     var changes: [Change] { preferences.changes }
     let client: StudIPClient
     var nextSync: Date?
+    /// Called once per sync with the files it changed; the app wires this to Notification Center.
+    var notifyNewFiles: (@MainActor ([Change]) -> Void)?
     private var engine: SyncEngine?
     private var storageError: String?
     private var task: Task<Void, Never>?
@@ -274,6 +276,8 @@ final class AppStore {
         let selectedIDs = preferences.selectedCourses
         let root = URL(fileURLWithPath: preferences.destination, isDirectory: true)
         task = Task {
+            var fresh: [Change] = []
+            defer { if !fresh.isEmpty { notifyNewFiles?(fresh) } }
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
             do {
                 courses = try await client.courses()
@@ -293,7 +297,7 @@ final class AppStore {
                         if let change = try await engine.synchronize(file, courseID: course.id, root: root, fetch: { [client] in
                             try await client.download(id: file.id)
                         }) {
-                            preferences.changes.insert(change, at: 0)
+                            preferences.changes.insert(change, at: 0); fresh.append(change)
                             preferences.changes = Array(preferences.changes.prefix(200))
                             bytes += file.size
                             save()

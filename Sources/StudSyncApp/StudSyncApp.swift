@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in store.networkChanged(available: available) }
         }
         connectivity.start(queue: DispatchQueue(label: "com.gnagster.StudSync.connectivity"))
+        FileNotifications.shared.start(store)
         store.start()
         if !store.preferences.setupComplete { AppWindows.show(store) }
     }

@@ -25,3 +25,20 @@ import StudSyncCore
         #expect(groups.map(\.day) == [calendar.startOfDay(for: groups[0].changes[0].date), calendar.startOfDay(for: groups[1].changes[0].date)])
     }
 }
+
+@MainActor struct FileNotificationTests {
+    @Test func oneCourseNamesTheCourseAndListsAtMostThreeFiles() {
+        let changes = ["a.pdf", "b.pdf", "c.pdf", "d.pdf"].map { Change(name: $0, path: "/r/Analysis I/\($0)", conflict: false) }
+        let text = FileNotifications.content(for: changes, root: "/r")
+        #expect(text.title.contains("Analysis I"))
+        #expect(text.body.hasPrefix("a.pdf, b.pdf, c.pdf, "))
+        #expect(!text.body.contains("d.pdf"))
+    }
+
+    @Test func severalCoursesShowACountAndMentionPreservedEdits() {
+        let changes = [Change(name: "a.pdf", path: "/r/A/a.pdf", conflict: false), Change(name: "b.pdf", path: "/r/B/b.pdf", conflict: true)]
+        let text = FileNotifications.content(for: changes, root: "/r")
+        #expect(text.title.contains("2"))
+        #expect(text.body.contains("\n"))
+    }
+}

@@ -113,7 +113,7 @@ struct SetupView: View {
             }
             FolderPreview(path: store.preferences.destination, folders: folders, upcoming: false, fresh: freshFolders) { EmptyView() }
             Form { SyncPreferenceRows(store: store) }
-                .formStyle(.grouped).scrollDisabled(true).frame(height: 104).padding(.horizontal, -20)
+                .formStyle(.grouped).scrollDisabled(true).frame(height: 148).padding(.horizontal, -20)
         }
         .onAppear(perform: loadFolders)
     }

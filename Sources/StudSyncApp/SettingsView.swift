@@ -101,6 +101,7 @@ struct SyncFolderRow: View {
 
 struct SyncPreferenceRows: View {
     @Bindable var store: AppStore
+    @AppStorage(FileNotifications.enabledKey) private var notify = true
     var body: some View {
         Picker(L("Sync"), selection: $store.preferences.intervalMinutes) {
             Text(L("Manually")).tag(0)
@@ -110,6 +111,7 @@ struct SyncPreferenceRows: View {
         }.disabled(store.isBusy)
         Toggle(L("Start at Login"), isOn: Binding(get: { store.launchAtLogin }, set: { store.setLaunchAtLogin($0) }))
             .disabled(store.isBusy)
+        Toggle(L("Notify about new files"), isOn: $notify)
         if store.launchAtLoginStatus == .requiresApproval {
             LabeledContent {
                 Button(L("Open Login Items…")) { SMAppService.openSystemSettingsLoginItems() }
