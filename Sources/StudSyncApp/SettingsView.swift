@@ -170,6 +170,8 @@ struct AccountRows: View {
     @Bindable var store: AppStore
     @State private var switching = false
     @State private var previousUsername = ""
+    /// Set once a sign-in starts: it may already have saved new credentials, so Cancel no longer offers a rollback.
+    @State private var submitted = false
     var body: some View {
         Group {
             if store.signedIn && !switching {
@@ -182,14 +184,15 @@ struct AccountRows: View {
                     }
                     SettingsRow(title: "University") { Text("Göttingen · Stud.IP").foregroundStyle(.secondary) }
                     SettingsRow(title: "Use another account") {
-                        Button(L("Sign in again…")) { previousUsername = store.username; switching = true }.disabled(store.isBusy)
+                        Button(L("Sign in again…")) { previousUsername = store.username; submitted = false; switching = true }.disabled(store.isBusy)
                     }
                 }
             } else {
-                SignInFields(store: store, cancel: switching ? { cancelSwitch() } : nil)
+                SignInFields(store: store, cancel: switching && !submitted ? { cancelSwitch() } : nil)
             }
         }
         .onChange(of: store.signInCount) { switching = false }
+        .onChange(of: store.isBusy) { if store.isBusy && switching { submitted = true } }
         .refitsWindow(on: switching)
     }
 
