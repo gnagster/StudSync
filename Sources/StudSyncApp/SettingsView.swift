@@ -170,7 +170,7 @@ struct AccountRows: View {
     @Bindable var store: AppStore
     @State private var switching = false
     @State private var previousUsername = ""
-    /// Set once a sign-in starts: it may already have saved new credentials, so Cancel no longer offers a rollback.
+    /// Set once a sign-in or web login starts (not a sync): it may already have saved new credentials, so Cancel no longer offers a rollback.
     @State private var submitted = false
     var body: some View {
         Group {
@@ -192,7 +192,7 @@ struct AccountRows: View {
             }
         }
         .onChange(of: store.signInCount) { switching = false }
-        .onChange(of: store.isBusy) { if store.isBusy && switching { submitted = true } }
+        .onChange(of: store.signInAttempts) { if switching { submitted = true } }
         .refitsWindow(on: switching)
     }
 

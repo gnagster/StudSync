@@ -250,12 +250,13 @@ struct AppStoreTests {
             return (503, "")
         }
         store.showWebLogin = true
-        let signIns = store.signInCount
+        let signIns = store.signInCount, attempts = store.signInAttempts
         store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.needsAttention)
         #expect(store.signInCount == signIns + 1, "a successful sign-in lets Settings leave the account switcher")
+        #expect(store.signInAttempts == attempts + 1, "web adoption counts as a submitted account switch")
         try serveCourses([Course(id: "cc", title: "Course")])
         store.refreshCourses()
         try await waitForConnection(store)

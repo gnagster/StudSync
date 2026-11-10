@@ -51,6 +51,8 @@ final class AppStore {
     var signedIn = false
     /// Increments after each successful sign-in, so views can leave a sign-in form.
     private(set) var signInCount = 0
+    /// Increments whenever a password sign-in or web-session adoption starts; it may save new credentials.
+    private(set) var signInAttempts = 0
     var completed = 0
     var total = 0
     var bytes: Int64 = 0
@@ -129,6 +131,7 @@ final class AppStore {
         guard !isBusy else { return }
         guard engine != nil else { message = storageError; return }
         let credentials = Credentials(username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+        signInAttempts += 1
         reconnectPending = false
         isBusy = true; status = "Signing in…"
         task = Task {
@@ -340,6 +343,7 @@ final class AppStore {
         guard showWebLogin, attempt == webLoginAttempt, !isBusy else { return }
         guard engine != nil else { message = storageError; return }
         isBusy = true
+        signInAttempts += 1
         task = Task {
             var source = MessageSource.operation
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
