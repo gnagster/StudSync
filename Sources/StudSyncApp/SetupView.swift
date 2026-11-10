@@ -53,6 +53,8 @@ struct SetupView: View {
         .fixedSize(horizontal: false, vertical: true)
         .sheet(isPresented: $store.showWebLogin) { WebLogin(store: store) }
         .onChange(of: store.preferences.intervalMinutes) { store.save(); store.schedule() }
+        // Rerun after setup, the assistant edits the live selection; save it like Settings does.
+        .onChange(of: store.preferences.selectedCourses) { if store.preferences.setupComplete { store.save(); store.schedule() } }
         .onChange(of: store.isBusy) { if step == .review { loadFolders() } }
         .refitsWindow(on: "\(step)\(store.isBusy)\(store.signedIn)\(store.messages.count)\(folders.count)")
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in store.refreshLaunchAtLogin() }
