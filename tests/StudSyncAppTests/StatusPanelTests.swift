@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Testing
 import StudSyncCore
 @testable import StudSyncApp
@@ -40,5 +41,29 @@ import StudSyncCore
         let text = FileNotifications.content(for: changes, root: "/r")
         #expect(text.title.contains("2"))
         #expect(text.body.contains("\n"))
+    }
+}
+
+@MainActor struct SettingsWindowTests {
+    @Test func preferencesWindowIsTitledAndEveryTabFitsItsContent() throws {
+        _ = NSApplication.shared
+        let store = AppStore(support: FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString),
+                             readCredentials: { nil }, writeCredentials: { _ in },
+                             readLaunchAtLogin: { .notRegistered }, updateLaunchAtLogin: { _ in })
+        let window = AppWindows.makeSettingsWindow(store)
+        defer { window.close() }
+        #expect(window.title == L("StudSync Settings"))
+        let tabs = try #require(window.contentViewController as? SettingsTabController)
+        var heights: [CGFloat] = []
+        for index in tabs.tabViewItems.indices {
+            tabs.selectedTabViewItemIndex = index
+            tabs.fitWindow(animate: false)
+            let content = window.contentRect(forFrameRect: window.frame)
+            #expect(abs(content.width - SettingsLayout.width) < 1, "tab \(index) width \(content.width)")
+            #expect(content.height < 560, "tab \(index) height \(content.height)")
+            heights.append(content.height)
+        }
+        print("settings tab content heights:", heights)
+        #expect(Set(heights.map { Int($0) }).count > 1)
     }
 }

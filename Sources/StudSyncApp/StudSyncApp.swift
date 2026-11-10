@@ -28,31 +28,42 @@ enum AppWindows {
 
     /// Onboarding until setup is complete, then the native preferences window.
     static func show(_ store: AppStore) {
-        let window = store.preferences.setupComplete ? settingsWindow(store) : setupWindow(store)
+        if store.preferences.setupComplete { present(settings ?? makeSettingsWindow(store)) } else { showOnboarding(store) }
+    }
+
+    /// Runs the onboarding from its first page, also after setup is complete.
+    static func showOnboarding(_ store: AppStore) {
+        settings?.close()
+        let window = setup ?? {
+            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
+                                  styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+            window.title = "StudSync"
+            window.titlebarAppearsTransparent = true
+            window.isReleasedWhenClosed = false
+            setup = window
+            return window
+        }()
+        if !window.isVisible {
+            window.contentView = NSHostingView(rootView: SetupView(store: store, close: { setup?.close() }))
+            window.center()
+        }
+        present(window)
+    }
+
+    private static func present(_ window: NSWindow) {
         if window !== setup { setup?.close() }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    private static func setupWindow(_ store: AppStore) -> NSWindow {
-        if let setup { return setup }
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 600),
-                              styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        window.title = "StudSync"
-        window.titlebarAppearsTransparent = true
-        window.isReleasedWhenClosed = false
-        window.contentView = NSHostingView(rootView: SetupView(store: store, close: { setup?.close() }))
-        window.center()
-        setup = window
-        return window
-    }
-
-    private static func settingsWindow(_ store: AppStore) -> NSWindow {
-        if let settings { return settings }
-        let tabs = NSTabViewController()
+    static func makeSettingsWindow(_ store: AppStore) -> NSWindow {
+        let tabs = SettingsTabController()
         tabs.tabStyle = .toolbar
+        tabs.canPropagateSelectedChildViewControllerTitle = false
         for tab in SettingsTab.allCases {
-            let item = NSTabViewItem(viewController: NSHostingController(rootView: SettingsTabView(tab: tab, store: store)))
+            let hosting = NSHostingController(rootView: SettingsTabView(tab: tab, store: store))
+            hosting.sizingOptions = []
+            let item = NSTabViewItem(viewController: hosting)
             item.label = L(tab.title)
             item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: L(tab.title))
             tabs.addTabViewItem(item)
@@ -60,13 +71,38 @@ enum AppWindows {
         let window = NSWindow(contentViewController: tabs)
         window.styleMask = [.titled, .closable]
         window.toolbarStyle = .preference
+        window.title = L("StudSync Settings")
         window.isReleasedWhenClosed = false
-        window.center(); window.setFrameAutosaveName("StudSyncPreferences")
+        tabs.fitWindow(animate: false)
+        window.center()
         settings = window
         return window
     }
 }
 
+/// Preferences tabs, each sized to its content: the window grows or shrinks when the tab changes, keeping its top edge.
+final class SettingsTabController: NSTabViewController {
+    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, didSelect: tabViewItem)
+        fitWindow(animate: true)
+    }
+
+    func fitWindow(animate: Bool) {
+        guard let window = view.window,
+              let hosting = tabViewItems[safe: selectedTabViewItemIndex]?.viewController as? NSHostingController<SettingsTabView> else { return }
+        let size = hosting.sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        guard size.width > 0, size.height > 0 else { return }
+        let target = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        var frame = window.frame
+        frame.origin.y += frame.height - target.height
+        frame.size = target.size
+        window.setFrame(frame, display: true, animate: animate && window.isVisible)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+}
 @main
 struct StudSyncApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate

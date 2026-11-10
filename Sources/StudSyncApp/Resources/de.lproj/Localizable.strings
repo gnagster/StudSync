@@ -122,3 +122,9 @@
 "Notify about new files" = "Bei neuen Dateien benachrichtigen";
 "New files in %@" = "Neue Dateien in %@";
 "%lld new files" = "%lld neue Dateien";
+"Start onboarding" = "Onboarding starten";
+"StudSync Settings" = "StudSync Einstellungen";
+"Use another account" = "Anderes Konto verwenden";
+"Sign in again…" = "Neu anmelden …";
+"Required" = "Erforderlich";
+"Clear" = "Löschen";

@@ -75,6 +75,7 @@ struct StatusPanel: View {
                         Button(L("Open in Finder")) { store.reveal() }.disabled(store.preferences.destination.isEmpty)
                         Button(L(store.preferences.setupComplete ? "Settings…" : "Set up StudSync…")) { AppWindows.show(store) }
                             .keyboardShortcut(",")
+                        Button(L("Start onboarding")) { AppWindows.showOnboarding(store) }.disabled(store.isBusy)
                         Button(L("Check for Updates…")) { AppUpdates.shared.check() }.disabled(!AppUpdates.shared.canCheck)
                         Divider()
                         Button(L("Quit")) { NSApp.terminate(nil) }.keyboardShortcut("q")

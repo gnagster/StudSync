@@ -66,9 +66,7 @@ struct SetupView: View {
                       systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.secondary).symbolRenderingMode(.multicolor).padding(.top, 8)
             } else {
-                Form { SignInFields(store: store, showsActions: false) }
-                    .formStyle(.grouped).scrollDisabled(true).frame(height: 120).padding(.horizontal, -20)
-                Button(L("University web login…")) { store.showWebLogin = true }.buttonStyle(.link).disabled(store.isBusy)
+                SignInFields(store: store, showsActions: false).padding(.top, 8)
             }
         }
     }
@@ -90,7 +88,7 @@ struct SetupView: View {
     private var courses: some View {
         VStack(spacing: 16) {
             heading("Which courses?", "Your current semester is already selected. You can change this later in Settings.")
-            CoursePicker(store: store)
+            CoursePicker(store: store, listHeight: 252)
         }
         .onAppear {
             if store.preferences.selectedCourses.isEmpty { store.preferences.selectedCourses = Set(store.visibleCourses.map(\.id)) }
@@ -112,8 +110,7 @@ struct SetupView: View {
                                                              store.completed, store.preferences.selectedCourses.count))
             }
             FolderPreview(path: store.preferences.destination, folders: folders, upcoming: false, fresh: freshFolders) { EmptyView() }
-            Form { SyncPreferenceRows(store: store) }
-                .formStyle(.grouped).scrollDisabled(true).frame(height: 148).padding(.horizontal, -20)
+            SettingsGroup { SyncPreferenceRows(store: store) }
         }
         .onAppear(perform: loadFolders)
     }
