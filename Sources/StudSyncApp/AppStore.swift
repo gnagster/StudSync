@@ -175,16 +175,18 @@ final class AppStore {
         try Task.checkCancellation()
         return result
     }
-    func finishSetup() {
-        guard !isBusy, canStartSync else { return }
+    /// Saves the finished setup and starts the first sync; false when it could not start (busy, incomplete, paused or unsaved).
+    @discardableResult func finishSetup() -> Bool {
+        guard !isBusy, canStartSync else { return false }
         let wasComplete = preferences.setupComplete
         preferences.setupComplete = true
         guard save() else {
             preferences.setupComplete = wasComplete
             status = "Settings need attention"
-            return
+            return false
         }
         schedule(); sync()
+        return true
     }
     @discardableResult func save() -> Bool {
         do {

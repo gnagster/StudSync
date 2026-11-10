@@ -168,7 +168,7 @@ struct SetupView: View {
         case .account, .folder:
             Button(L("Continue")) { step = SetupStep(rawValue: step.rawValue + 1) ?? .review }.disabled(!store.canContinueSetup(step))
         case .courses:
-            Button(L("Sync")) { store.finishSetup(); if store.preferences.setupComplete { step = .review } }
+            Button(L("Sync")) { if store.finishSetup() { step = .review } }
                 .disabled(!store.canContinueSetup(step))
         case .review:
             Button(L("Open in Finder")) { store.reveal(); close() }.disabled(store.isBusy)

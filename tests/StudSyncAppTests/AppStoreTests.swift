@@ -695,6 +695,10 @@ struct AppStoreTests {
         #expect(!store.canStartSync)
         store.finishSetup()
         #expect(!store.preferences.setupComplete)
+        // A rerun onboarding (setup already complete) must not advance when the sync cannot start.
+        store.preferences.setupComplete = true
+        #expect(!store.finishSetup())
+        #expect(store.preferences.setupComplete)
     }
     @Test func historicalSelectionsSurviveBrowsingSavingRestartAndSync() async throws {
         let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
