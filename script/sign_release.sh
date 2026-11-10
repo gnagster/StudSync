@@ -7,8 +7,7 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then exit 2; fi
 OUT="$(cd "$OUT" && pwd)"
 TOOLS="$PWD/.build/artifacts/sparkle/Sparkle/bin"
 ARCHIVE="$OUT/StudSync-$VERSION-arm64.zip"
-cp docs/RELEASE_NOTES.md "$OUT/StudSync-$VERSION-arm64.md"
-"$TOOLS/generate_appcast" --account com.gnagster.StudSync.updates --maximum-deltas 0 --embed-release-notes \
+"$TOOLS/generate_appcast" --account com.gnagster.StudSync.updates --maximum-deltas 0 \
     --download-url-prefix "https://github.com/gnagster/StudSync/releases/download/v$VERSION/" \
     --link https://github.com/gnagster/StudSync "$OUT"
 xmllint --noout "$OUT/appcast.xml"

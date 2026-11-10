@@ -48,6 +48,7 @@ require 'Update trust anchor' test -n "$public_key"
 require SUPublicEDKey test "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$APP/Contents/Info.plist")" = "$public_key"
 require SUVerifyUpdateBeforeExtraction test "$(plutil -extract SUVerifyUpdateBeforeExtraction raw -o - "$APP/Contents/Info.plist")" = true
 require SUEnableAutomaticChecks test "$(plutil -extract SUEnableAutomaticChecks raw -o - "$APP/Contents/Info.plist")" = false
+require SUShowReleaseNotes test "$(plutil -extract SUShowReleaseNotes raw -o - "$APP/Contents/Info.plist")" = false
 require SUAutomaticallyUpdate test "$(plutil -extract SUAutomaticallyUpdate raw -o - "$APP/Contents/Info.plist")" = false
 if ! otool -L "$APP/Contents/MacOS/StudSync" | grep -Fq '@rpath/Sparkle.framework/Versions/B/Sparkle'; then
     echo 'Release check failed: Sparkle linkage' >&2
