@@ -152,7 +152,7 @@ struct StatusPanel: View {
         }
         return VStack(alignment: .leading, spacing: 0) {
             groupLabel(L("Courses"))
-            ForEach(folders, id: \.self) { folder in
+            let rows = ForEach(folders, id: \.self) { folder in
                 PanelRow(help: "Open in Finder", action: {
                     NSWorkspace.shared.open(URL(fileURLWithPath: store.preferences.destination).appendingPathComponent(folder, isDirectory: true))
                 }) {
@@ -166,6 +166,12 @@ struct StatusPanel: View {
                         }
                     }.frame(minHeight: 24)
                 }
+            }
+            // Rows are 32 pt; beyond the limit the list scrolls so the panel stays on screen.
+            if folders.count > Self.visibleFolders {
+                ScrollView { VStack(spacing: 0) { rows } }.frame(height: (CGFloat(Self.visibleFolders) + 0.5) * 32)
+            } else {
+                rows
             }
         }.padding(4).panelGroup()
     }
@@ -196,6 +202,8 @@ struct StatusPanel: View {
         folders = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
             .map(\.lastPathComponent).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
+
+    static let visibleFolders = 6
 
     static func courseName(for path: String, root: String) -> String? {
         guard !root.isEmpty else { return nil }

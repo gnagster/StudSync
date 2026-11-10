@@ -113,3 +113,43 @@ import StudSyncCore
         }
     }
 }
+
+@MainActor struct ContentFitTests {
+    /// Regression: the settings window kept its height when the open tab's content changed.
+    @Test func settingsWindowRefitsWhenTheOpenTabChanges() throws {
+        _ = NSApplication.shared
+        let store = try ReadmeScreenshots.sampleStore()
+        let window = AppWindows.makeSettingsWindow(store)
+        defer { window.close() }
+        let tabs = try #require(window.contentViewController as? SettingsTabController)
+        tabs.selectedTabViewItemIndex = try #require(SettingsTab.allCases.firstIndex(of: .account))
+        window.orderFrontRegardless()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        let signedIn = window.contentRect(forFrameRect: window.frame).height
+        store.signedIn = false
+        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        let signedOut = window.contentRect(forFrameRect: window.frame).height
+        let fitted = try #require(tabs.tabViewItems[tabs.selectedTabViewItemIndex].viewController as? NSHostingController<SettingsTabView>).fittingSize
+        #expect(signedOut != signedIn)
+        #expect(abs(signedOut - fitted.height) < 1, "\(signedOut) vs \(fitted.height)")
+    }
+
+    /// Regression: many course folders grew the menu-bar panel beyond the screen.
+    @Test func panelCourseListScrollsBeyondItsLimit() throws {
+        _ = NSApplication.shared
+        func height(folders count: Int) throws -> CGFloat {
+            let store = try ReadmeScreenshots.sampleStore()
+            let root = URL(fileURLWithPath: store.preferences.destination)
+            for index in 0..<count { try FileManager.default.createDirectory(at: root.appendingPathComponent("Kurs \(index)"), withIntermediateDirectories: true) }
+            let panel = NSHostingController(rootView: StatusPanel(store: store))
+            let window = NSWindow(contentViewController: panel)
+            defer { window.close() }
+            window.orderFrontRegardless()
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            return panel.fittingSize.height
+        }
+        let atLimit = try height(folders: StatusPanel.visibleFolders - 4) // sample data already has four folders
+        let many = try height(folders: 40)
+        #expect(many - atLimit < 32, "\(atLimit) vs \(many)")
+    }
+}

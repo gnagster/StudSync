@@ -56,6 +56,8 @@ struct SettingsTabView: View {
             if tab == .general { store.refreshLaunchAtLogin() }
         }
         .sheet(isPresented: Binding(get: { tab == .account && store.showWebLogin }, set: { store.showWebLogin = $0 })) { WebLogin(store: store) }
+        // Sign-in state, progress and feedback change the tab height; the window does not resize itself.
+        .refitsWindow(on: "\(store.signedIn)\(store.isBusy)\(store.messages)")
     }
 
     private var general: some View {
@@ -168,22 +170,25 @@ struct AccountRows: View {
     @Bindable var store: AppStore
     @State private var switching = false
     var body: some View {
-        if store.signedIn && !switching {
-            SettingsGroup {
-                SettingsRow(title: "Account") {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
-                        Text(store.username.isEmpty ? L("University web login") : store.username).foregroundStyle(.secondary)
+        Group {
+            if store.signedIn && !switching {
+                SettingsGroup {
+                    SettingsRow(title: "Account") {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                            Text(store.username.isEmpty ? L("University web login") : store.username).foregroundStyle(.secondary)
+                        }
+                    }
+                    SettingsRow(title: "University") { Text("Göttingen · Stud.IP").foregroundStyle(.secondary) }
+                    SettingsRow(title: "Use another account") {
+                        Button(L("Sign in again…")) { switching = true }.disabled(store.isBusy)
                     }
                 }
-                SettingsRow(title: "University") { Text("Göttingen · Stud.IP").foregroundStyle(.secondary) }
-                SettingsRow(title: "Use another account") {
-                    Button(L("Sign in again…")) { switching = true }.disabled(store.isBusy)
-                }
+            } else {
+                SignInFields(store: store)
             }
-        } else {
-            SignInFields(store: store)
         }
+        .refitsWindow(on: switching)
     }
 }
 
