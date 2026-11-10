@@ -52,6 +52,7 @@ struct SetupView: View {
         .sheet(isPresented: $store.showWebLogin) { WebLogin(store: store) }
         .onChange(of: store.preferences.intervalMinutes) { store.save(); store.schedule() }
         .onChange(of: store.isBusy) { if step == .review { loadFolders() } }
+        .refitsWindow(on: "\(step)\(store.isBusy)\(store.signedIn)\(store.messages.count)\(folders.count)")
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in store.refreshLaunchAtLogin() }
     }
 

@@ -279,7 +279,7 @@ struct CoursePicker: View {
             .frame(height: shown.isEmpty ? 96 : min(listHeight, CGFloat(shown.count) * (SettingsLayout.rowHeight + 1)))
             .background(.background.secondary, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(.separator.opacity(0.6)))
-            .onChange(of: shown.count) { (NSApp.keyWindow?.contentViewController as? SettingsTabController)?.fitWindow(animate: true) }
+            .refitsWindow(on: shown.count)
 
             HStack(spacing: 12) {
                 Text(String(format: L("%lld selected"), store.preferences.selectedCourses.count)).monospacedDigit()

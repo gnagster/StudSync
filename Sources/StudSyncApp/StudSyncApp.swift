@@ -50,9 +50,10 @@ enum AppWindows {
 
     /// The assistant sized to its current page; the window follows the page height.
     static func makeOnboarding(_ store: AppStore, step: SetupStep = .account, close: @escaping () -> Void = {}) -> NSViewController {
-        let hosting = NSHostingController(rootView: SetupView(store: store, close: close, step: step))
-        hosting.sizingOptions = .preferredContentSize
-        hosting.view.frame.size = hosting.sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
+        let hosting = OnboardingController(rootView: SetupView(store: store, close: close, step: step))
+        // Explicit fitting: automatic preferredContentSize sizing looped endlessly in constraint passes while a sync updated the page.
+        hosting.sizingOptions = []
+        hosting.view.frame.size = hosting.fittingSize
         return hosting
     }
 
@@ -86,8 +87,33 @@ enum AppWindows {
     }
 }
 
+/// A window whose content view controller resizes the window to its content.
+@MainActor protocol WindowFitting { func fitWindow(animate: Bool) }
+
+extension NSHostingController {
+    var fittingSize: NSSize { sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)) }
+}
+
+extension NSWindow {
+    /// Resizes to the given content size, keeping the top edge in place.
+    func fit(contentSize size: NSSize, animate: Bool) {
+        guard size.width > 0, size.height > 0 else { return }
+        let target = frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        guard target.size != frame.size else { return }
+        var frame = frame
+        frame.origin.y += frame.height - target.height
+        frame.size = target.size
+        setFrame(frame, display: true, animate: animate && isVisible)
+    }
+}
+
+/// The setup assistant; it refits the window when its page or content changes.
+final class OnboardingController: NSHostingController<SetupView>, WindowFitting {
+    func fitWindow(animate: Bool) { view.window?.fit(contentSize: fittingSize, animate: animate) }
+}
+
 /// Preferences tabs, each sized to its content: the window grows or shrinks when the tab changes, keeping its top edge.
-final class SettingsTabController: NSTabViewController {
+final class SettingsTabController: NSTabViewController, WindowFitting {
     override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
         super.tabView(tabView, didSelect: tabViewItem)
         fitWindow(animate: true)
@@ -96,13 +122,7 @@ final class SettingsTabController: NSTabViewController {
     func fitWindow(animate: Bool) {
         guard let window = view.window,
               let hosting = tabViewItems[safe: selectedTabViewItemIndex]?.viewController as? NSHostingController<SettingsTabView> else { return }
-        let size = hosting.sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude))
-        guard size.width > 0, size.height > 0 else { return }
-        let target = window.frameRect(forContentRect: NSRect(origin: .zero, size: size))
-        var frame = window.frame
-        frame.origin.y += frame.height - target.height
-        frame.size = target.size
-        window.setFrame(frame, display: true, animate: animate && window.isVisible)
+        window.fit(contentSize: hosting.fittingSize, animate: animate)
     }
 }
 
@@ -122,5 +142,19 @@ struct StudSyncApp: App {
                 .accessibilityLabel("StudSync")
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+extension View {
+    /// Refits content-sized windows after `value` changes, once SwiftUI has applied the change.
+    func refitsWindow<Value: Equatable>(on value: Value) -> some View {
+        onChange(of: value) {
+            // A run-loop block rather than the main queue, so it also runs inside nested run loops.
+            RunLoop.main.perform {
+                MainActor.assumeIsolated {
+                    for window in NSApp.windows where window.isVisible { (window.contentViewController as? WindowFitting)?.fitWindow(animate: true) }
+                }
+            }
+        }
     }
 }

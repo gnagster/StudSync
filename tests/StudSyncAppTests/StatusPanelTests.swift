@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import SwiftUI
 import Testing
 import StudSyncCore
 @testable import StudSyncApp
@@ -82,5 +83,33 @@ import StudSyncCore
             heights.append(content.height)
         }
         print("onboarding page heights:", heights)
+    }
+}
+
+@MainActor struct OnboardingDuringSyncTests {
+    /// Regression: opening the assistant while a sync updated the store crashed in an endless constraint pass.
+    @Test func onboardingSurvivesStoreUpdatesWhileOnScreen() throws {
+        _ = NSApplication.shared
+        let store = try ReadmeScreenshots.sampleStore()
+        for step in SetupStep.allCases {
+            let controller = AppWindows.makeOnboarding(store, step: step)
+            // Automatic sizing (preferredContentSize) caused the endless constraint passes.
+            #expect((controller as? NSHostingController<SetupView>)?.sizingOptions.isEmpty == true)
+            let window = NSWindow(contentViewController: controller)
+            window.orderFrontRegardless()
+            for round in 0..<6 {
+                store.isBusy = round.isMultiple(of: 2)
+                store.total = 40; store.completed = round * 6
+                store.status = round.isMultiple(of: 2) ? "Analysis I" : "Up to date"
+                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                window.layoutIfNeeded()
+            }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.6)) // let the animated refit finish
+            let content = window.contentRect(forFrameRect: window.frame)
+            #expect(abs(content.width - SettingsLayout.width) < 1, "\(step) width \(content.width)")
+            let fitted = try #require(controller as? OnboardingController).fittingSize
+            #expect(abs(content.height - fitted.height) < 1, "\(step) height \(content.height) vs \(fitted.height)")
+            window.close()
+        }
     }
 }
