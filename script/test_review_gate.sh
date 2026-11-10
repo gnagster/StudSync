@@ -21,8 +21,8 @@ fi
 MOCK
 chmod +x "$scratch/bin/gh"
 export PATH="$scratch/bin:$PATH" REVIEW_FIXTURE="$scratch" GITHUB_EVENT_NAME=pull_request_review GITHUB_REPOSITORY=owner/repo GITHUB_EVENT_PATH="$scratch/event"
-echo '{"pull_request":{"number":1,"head":{"sha":"reviewed"},"base":{"sha":"base"}}}' > "$scratch/event"
-echo '{"state":"open","draft":false,"head":{"sha":"reviewed"},"base":{"sha":"base"}}' > "$scratch/pr"
+echo '{"pull_request":{"number":1,"head":{"sha":"reviewed","repo":{"full_name":"owner/repo"}},"base":{"sha":"base"}}}' > "$scratch/event"
+echo '{"state":"open","draft":false,"head":{"sha":"reviewed","repo":{"full_name":"owner/repo"}},"base":{"sha":"base"}}' > "$scratch/pr"
 echo '[[{"id":1,"user":{"login":"coderabbitai[bot]","type":"Bot"},"state":"APPROVED","commit_id":"reviewed"}]]' > "$scratch/reviews"
 echo '[{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}}]' > "$scratch/threads"
 jq -n --arg body '<!-- codex-review-state:v1 {"code_review":{"status":"completed","commit_sha":"reviewed","has_any_findings":false,"has_unresolved_findings":false}} -->' '[[{id:1,user:{login:"chatgpt-codex-connector[bot]",type:"Bot"},body:$body}]]' > "$scratch/comments"
@@ -43,6 +43,7 @@ for replacement in 'in_progress' 'older' 'true' 'null'; do
     jq "$filter" "$scratch/clean" > "$scratch/comments"
     reject "Codex $replacement"
 done
+jq 'map(map(.body |= sub("}} -->"; "},\"security_review\":{\"commit_sha\":\"reviewed\"}} -->")))' "$scratch/clean" > "$scratch/comments"; reject 'partial Codex security review'
 echo '[]' > "$scratch/comments"; reject 'missing Codex summary'
 jq 'map(map(.user.login = "someone"))' "$scratch/clean" > "$scratch/comments"; reject 'spoofed Codex summary'
 jq '.[1] = [(.[0][0] | .id = 2 | .body = "<!-- codex-review-state:v1 invalid -->")]' "$scratch/clean" > "$scratch/comments"; reject 'malformed latest Codex summary on another page'
@@ -62,9 +63,10 @@ jq '.[1] = .[0] | .[1].data.repository.pullRequest.reviewThreads.nodes[0].isReso
 reject 'unresolved thread on another page'
 echo '[{"errors":[{"message":"denied"}]}]' > "$scratch/threads"; reject 'missing GraphQL data'
 cp "$scratch/resolved" "$scratch/threads"
-echo '{"state":"open","draft":false,"head":{"sha":"new"},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'new head'
-echo '{"state":"closed","draft":false,"head":{"sha":"reviewed"},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'closed PR'
-echo '{"state":"open","draft":true,"head":{"sha":"reviewed"},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'draft PR'
-echo '{"state":"open","draft":false,"head":{"sha":"reviewed"},"base":{"sha":"changed"}}' > "$scratch/pr"; reject 'changed base'
+echo '{"state":"open","draft":false,"head":{"sha":"new","repo":{"full_name":"owner/repo"}},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'new head'
+echo '{"state":"closed","draft":false,"head":{"sha":"reviewed","repo":{"full_name":"owner/repo"}},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'closed PR'
+echo '{"state":"open","draft":true,"head":{"sha":"reviewed","repo":{"full_name":"owner/repo"}},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'draft PR'
+echo '{"state":"open","draft":false,"head":{"sha":"reviewed","repo":{"full_name":"owner/repo"}},"base":{"sha":"changed"}}' > "$scratch/pr"; reject 'changed base'
+echo '{"state":"open","draft":false,"head":{"sha":"reviewed","repo":{"full_name":"fork/repo"}},"base":{"sha":"base"}}' > "$scratch/pr"; reject 'fork PR'
 GITHUB_EVENT_NAME=push "$ROOT/script/require_review.sh"
 echo 'Review gate regressions passed.'

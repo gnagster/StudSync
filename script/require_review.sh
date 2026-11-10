@@ -7,7 +7,8 @@ expected="$(jq -er '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
 base="$(jq -er '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
 repo="${GITHUB_REPOSITORY:?}"
 pr="$(gh api "repos/$repo/pulls/$number")"
-jq -e --arg sha "$expected" --arg base "$base" '.state == "open" and .draft == false and .head.sha == $sha and .base.sha == $base' <<< "$pr" > /dev/null
+# Fork PRs get read-only review-event tokens, so CodeQL could not upload; fail closed.
+jq -e --arg sha "$expected" --arg base "$base" --arg repo "$repo" '.state == "open" and .draft == false and .head.sha == $sha and .base.sha == $base and .head.repo.full_name == $repo' <<< "$pr" > /dev/null
 reviews="$(gh api --paginate --slurp "repos/$repo/pulls/$number/reviews?per_page=100")"
 jq -e --arg sha "$expected" '
   [ .[][] | select(.user.login == "coderabbitai[bot]" and .user.type == "Bot") ]
@@ -21,8 +22,8 @@ jq -e --arg sha "$expected" '
   | capture("<!-- codex-review-state:v1 (?<state>[^\\r\\n]+) -->").state | fromjson
   | (.code_review | .status == "completed" and .commit_sha == $sha
       and .has_any_findings == false and .has_unresolved_findings == false)
-    and (.security_review | .status == null or
-      (.status == "completed" and .commit_sha == $sha
+    and (.security_review == null or
+      (.security_review | .status == "completed" and .commit_sha == $sha
        and .has_any_findings == false and .has_unresolved_findings == false))
 ' <<< "$comments" > /dev/null
 threads="$(gh api graphql --paginate --slurp -F owner="${repo%/*}" -F name="${repo#*/}" -F number="$number" -f query='

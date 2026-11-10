@@ -29,9 +29,19 @@ echo 'Agent instructions' > AGENTS.md
 echo 'Security instructions' > SECURITY.md
 git add .; git commit -qm docs
 scope false
+docs="$(git rev-parse HEAD)"
+git checkout -q --detach "$base"
+echo '// Newer base' > Sources/Base.swift
+git add .; git commit -qm newer-base
+stale_base="$(git rev-parse HEAD)"
+git checkout -q --detach "$base"
+git merge -q --no-ff --no-edit "$docs"
+# Review events use the merge commit's own base, even when the event base is newer.
 : > "$scratch/output"
-GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
+GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$stale_base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
 grep -Fxq 'scan=false' "$scratch/output"
+git checkout -q --detach "$docs"
+if GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh" > "$scratch/error" 2>&1; then exit 1; fi
 : > "$scratch/output"
 GITHUB_EVENT_NAME=push STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
 grep -Fxq 'scan=false' "$scratch/output"
