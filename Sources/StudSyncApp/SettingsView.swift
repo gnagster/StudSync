@@ -169,6 +169,7 @@ struct SyncPreferenceRows: View {
 struct AccountRows: View {
     @Bindable var store: AppStore
     @State private var switching = false
+    @State private var previousUsername = ""
     var body: some View {
         Group {
             if store.signedIn && !switching {
@@ -181,15 +182,22 @@ struct AccountRows: View {
                     }
                     SettingsRow(title: "University") { Text("Göttingen · Stud.IP").foregroundStyle(.secondary) }
                     SettingsRow(title: "Use another account") {
-                        Button(L("Sign in again…")) { switching = true }.disabled(store.isBusy)
+                        Button(L("Sign in again…")) { previousUsername = store.username; switching = true }.disabled(store.isBusy)
                     }
                 }
             } else {
-                SignInFields(store: store, cancel: switching ? { switching = false } : nil)
+                SignInFields(store: store, cancel: switching ? { cancelSwitch() } : nil)
             }
         }
         .onChange(of: store.signInCount) { switching = false }
         .refitsWindow(on: switching)
+    }
+
+    /// Discards unsubmitted edits: the summary keeps the signed-in account and no typed password stays in memory.
+    private func cancelSwitch() {
+        store.username = previousUsername
+        store.password = ""
+        switching = false
     }
 }
 
