@@ -106,9 +106,12 @@ struct SetupView: View {
             } else if !store.messages.isEmpty {
                 heading("First sync needs attention", "Your setup is saved. StudSync tries again at the next sync.")
                 FeedbackBar(store: store).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else {
+            } else if store.status == "Up to date" {
                 heading("Your courses are in Finder", String(format: L("%lld files from %lld courses are up to date."),
                                                              store.completed, store.preferences.selectedCourses.count))
+            } else {
+                // Cancelled or stopped without an error message: not a completed first sync.
+                heading("First sync was interrupted", "Your setup is saved. StudSync continues at the next sync.")
             }
             FolderPreview(path: store.preferences.destination, folders: folders, upcoming: false, fresh: freshFolders) { EmptyView() }
             SettingsGroup { SyncPreferenceRows(store: store) }

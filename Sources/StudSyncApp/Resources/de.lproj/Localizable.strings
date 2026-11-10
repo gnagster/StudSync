@@ -129,3 +129,5 @@
 "Required" = "Erforderlich";
 "Clear" = "Löschen";
 "Set Up StudSync" = "StudSync einrichten";
+"First sync was interrupted" = "Erster Abgleich unterbrochen";
+"Your setup is saved. StudSync continues at the next sync." = "Deine Einrichtung ist gespeichert. StudSync macht beim nächsten Abgleich weiter.";
