@@ -29,6 +29,8 @@ struct SetupView: View {
     var close: () -> Void = {}
     @State var step: SetupStep = .account
     @State private var folders: [String] = []
+    /// The current-semester default applies once, on a first setup; a selection the user cleared stays empty.
+    @State private var preselected = false
 
     static let suggestedFolder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("Stud.IP", isDirectory: true).path
@@ -92,7 +94,10 @@ struct SetupView: View {
             CoursePicker(store: store, listHeight: 260)
         }
         .onAppear {
-            if store.preferences.selectedCourses.isEmpty { store.preferences.selectedCourses = Set(store.visibleCourses.map(\.id)) }
+            if !preselected, !store.preferences.setupComplete, store.preferences.selectedCourses.isEmpty {
+                store.preferences.selectedCourses = Set(store.visibleCourses.map(\.id))
+            }
+            preselected = true
         }
     }
 
