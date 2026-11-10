@@ -87,3 +87,17 @@
 "New" = "Neu";
 "Synced %@" = "Abgeglichen %@";
 "Next %@" = "Nächster %@";
+"General" = "Allgemein";
+"Account" = "Konto";
+"History" = "Verlauf";
+"Updates" = "Updates";
+"Sync folder" = "Sync-Ordner";
+"University" = "Universität";
+"Use another account…" = "Anderes Konto verwenden …";
+"Username" = "Benutzername";
+"Without email suffix" = "Ohne E-Mail-Endung";
+"Search" = "Suchen";
+"Search courses" = "Kurse suchen";
+"No matching courses" = "Keine passenden Kurse";
+"%lld selected" = "%lld ausgewählt";
+"Version %@" = "Version %@";

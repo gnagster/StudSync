@@ -225,17 +225,3 @@ struct SetupView: View {
         }.padding(.horizontal, 26).padding(.vertical, 16).background(.bar)
     }
 }
-
-private struct UpdatePreferences: View {
-    private let updates = AppUpdates.shared
-    @State private var checks = AppUpdates.shared.automaticallyChecks
-    @State private var downloads = AppUpdates.shared.automaticallyDownloads
-    var body: some View {
-        Toggle(L("Automatically check for updates"), isOn: $checks)
-            .onChange(of: checks) { updates.automaticallyChecks = checks }
-        Toggle(L("Automatically download updates"), isOn: $downloads)
-            .disabled(!checks)
-            .onChange(of: downloads) { updates.automaticallyDownloads = downloads }
-        Button(L("Check for Updates…")) { updates.check() }.disabled(!updates.canCheck)
-    }
-}

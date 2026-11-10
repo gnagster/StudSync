@@ -22,20 +22,47 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 enum AppWindows {
-    private static var window: NSWindow?
+    private static var setup: NSWindow?
+    private static var settings: NSWindow?
+
+    /// Onboarding until setup is complete, then the native preferences window.
     static func show(_ store: AppStore) {
-        if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
-                                  styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "StudSync"
-            window.minSize = NSSize(width: 540, height: 550)
-            window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SetupView(store: store))
-            window.center(); window.setFrameAutosaveName("StudSyncSettings")
-            Self.window = window
-        }
-        window?.makeKeyAndOrderFront(nil)
+        let window = store.preferences.setupComplete ? settingsWindow(store) : setupWindow(store)
+        if window !== setup { setup?.close() }
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private static func setupWindow(_ store: AppStore) -> NSWindow {
+        if let setup { return setup }
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
+                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
+        window.title = "StudSync"
+        window.minSize = NSSize(width: 540, height: 550)
+        window.isReleasedWhenClosed = false
+        window.contentView = NSHostingView(rootView: SetupView(store: store))
+        window.center()
+        setup = window
+        return window
+    }
+
+    private static func settingsWindow(_ store: AppStore) -> NSWindow {
+        if let settings { return settings }
+        let tabs = NSTabViewController()
+        tabs.tabStyle = .toolbar
+        for tab in SettingsTab.allCases {
+            let item = NSTabViewItem(viewController: NSHostingController(rootView: SettingsTabView(tab: tab, store: store)))
+            item.label = L(tab.title)
+            item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: L(tab.title))
+            tabs.addTabViewItem(item)
+        }
+        let window = NSWindow(contentViewController: tabs)
+        window.styleMask = [.titled, .closable]
+        window.toolbarStyle = .preference
+        window.isReleasedWhenClosed = false
+        window.center(); window.setFrameAutosaveName("StudSyncPreferences")
+        settings = window
+        return window
     }
 }
 
