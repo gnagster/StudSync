@@ -2,13 +2,15 @@ name: CI
 on:
   push:
     branches: [master]
-  pull_request:
+  pull_request_review:
+    types: [submitted, dismissed]
   schedule:
     - cron: '43 1 * * 1'
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   scope:
@@ -22,14 +24,18 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Require both current-head reviews and resolved feedback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./script/require_review.sh
       - id: scope
         env:
-          STUDSYNC_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          STUDSYNC_BASE_SHA: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.base.sha || github.event.before }}
         run: ./script/swift_scan_scope.sh
   native:
     name: Native tests and app bundle
     needs: scope
-    if: always() && github.event_name != 'schedule' && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')
+    if: ${{ !cancelled() && needs.scope.result == 'success' && github.event_name != 'schedule' && needs.scope.outputs.scan == 'true' }}
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
@@ -49,7 +55,7 @@ jobs:
   analyze:
     name: CodeQL (swift)
     needs: scope
-    if: always() && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')
+    if: ${{ !cancelled() && needs.scope.result == 'success' && needs.scope.outputs.scan == 'true' }}
     runs-on: macos-15-intel
     timeout-minutes: 40
     permissions:
@@ -64,13 +70,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
         with:
           languages: swift
           build-mode: manual
           db-location: ${{ runner.temp }}/codeql_databases
       - run: swift build --arch arm64 --verbose
-      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4
+      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
       - name: Verify first-party Swift source coverage
         env:
           STUDSYNC_CODEQL_DATABASE: ${{ runner.temp }}/codeql_databases/swift

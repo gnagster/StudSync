@@ -16,13 +16,15 @@ This personal build is ad-hoc signed and not notarized. Keep the app at its inst
 
 ## Verification
 
+Automated verification runs in GitHub Actions after review; contributors do not need to run the checks locally. `script/verify.sh` remains available as shared tooling:
+
 ```sh
 ./script/verify.sh
 ```
 
-Verification runs shell workflow-helper regressions, native Swift tests, real Sparkle installation/rejection/interruption fixtures, a release app build and whitespace validation. Update fixtures launch their own disposable background app and localhost server with an ephemeral test key; they do not touch your StudSync installation or production signing key. CI runs native tests/app bundling plus Swift CodeQL. Fixtures do not require university credentials. There is no separate dependency environment to prepare.
+It runs shell workflow-helper regressions, native Swift tests, real Sparkle installation/rejection/interruption fixtures, a release app build and whitespace validation. Update fixtures launch their own disposable background app and localhost server with an ephemeral test key; they do not touch your StudSync installation or production signing key. CI runs native tests/app bundling plus Swift CodeQL. Fixtures do not require university credentials. There is no separate dependency environment to prepare.
 
-The shared CI workflow classifies changes on Linux. Markdown-only PRs and master pushes (README, CONTRIBUTING, AGENTS, SECURITY and docs) skip both macOS jobs; GitHub's conditional-job skips satisfy their existing required contexts. Classification failure fails the required jobs closed. Native/build changes, unknown inputs, empty diffs and code renames run full checks; the weekly CodeQL scan remains. CI uses Intel macOS runners after repeated ARM runner-capacity failures. Tests execute for the host; release packaging and traced app builds explicitly target arm64, and packages are rejected if their architecture differs.
+PR checks run on GitHub after Codex has completed a clean review and CodeRabbit has reviewed and approved that same current commit, with all review threads resolved. Earlier review decisions fail the inexpensive required Change scope gate; expensive native/CodeQL jobs wait. New pushes need a fresh review. Master pushes and the weekly scan remain enabled. The shared CI workflow classifies changes on Linux. Markdown-only PRs and master pushes (README, CONTRIBUTING, AGENTS, SECURITY and docs) skip both macOS jobs; GitHub's conditional-job skips satisfy their existing required contexts. Classification/review failure fails the required Change scope check closed. Native/build changes, unknown inputs, empty diffs and code renames run full checks; the weekly CodeQL scan remains. CI uses Intel macOS runners after repeated ARM runner-capacity failures. Tests execute for the host; release packaging and traced app builds explicitly target arm64, and packages are rejected if their architecture differs.
 
 The optional `STUDSYNC_LIVE_TEST=1 swift test --filter liveGoettingenReadOnlyCheck` reads the native app's Keychain entry, signs into Göttingen, and verifies current/past enrollment and a small temporary course-file download. Sign in through the app first and grant macOS Keychain access when asked. The live check never runs in CI, never prints credentials, and does not change the sync destination or university files.
 
@@ -52,4 +54,4 @@ Sparkle 2 provides Check for Updates and opt-in automatic checks/downloads. Upda
 
 ## Project rules
 
-Read [AGENTS.md](AGENTS.md), the [security policy](SECURITY.md), the [roadmap](docs/ROADMAP.md) and the [automation notes](docs/AUTOMATION.md) before larger changes. Keep the roadmap current in every PR. Development uses the owner's ChatGPT subscription; no OpenAI API credentials or API-billed Codex Actions are used. Automatic code review is configured in Codex repository settings, not by workflow YAML.
+Read [AGENTS.md](AGENTS.md), the [security policy](SECURITY.md), the [roadmap](docs/ROADMAP.md) and the [automation notes](docs/AUTOMATION.md) before larger changes. Keep the roadmap current in every PR. Development uses the owner's ChatGPT subscription; no OpenAI API credentials or API-billed Codex Actions are used. Keep both Codex and CodeRabbit PR reviews enabled; both must finish and findings must be handled before CI.
