@@ -49,6 +49,7 @@ for replacement in 'in_progress' 'older' 'true' 'null'; do
     reject "Codex $replacement"
 done
 jq 'map(map(.body |= sub("}} -->"; "},\"security_review\":{\"commit_sha\":\"reviewed\"}} -->")))' "$scratch/clean" > "$scratch/comments"; reject 'partial Codex security review'
+jq 'map(map(.body |= sub("}} -->"; "},\"security_review\":{}} -->")))' "$scratch/clean" > "$scratch/comments"; reject 'empty Codex security review'
 echo '[]' > "$scratch/comments"; reject 'missing Codex summary'
 jq 'map(map(.user.login = "someone"))' "$scratch/clean" > "$scratch/comments"; reject 'spoofed Codex summary'
 jq '.[1] = [(.[0][0] | .id = 2 | .body = "<!-- codex-review-state:v1 invalid -->")]' "$scratch/clean" > "$scratch/comments"; reject 'malformed latest Codex summary on another page'

@@ -23,8 +23,7 @@ jq -e --arg sha "$expected" '
   | (.code_review | .status == "completed" and .commit_sha == $sha
       and .has_any_findings == false and .has_unresolved_findings == false)
     and (.security_review | . == null
-      or (.status == null and .commit_sha == null
-          and .has_any_findings == null and .has_unresolved_findings == null)
+      or . == {status: null, commit_sha: null, has_any_findings: null, has_unresolved_findings: null}
       or (.status == "completed" and .commit_sha == $sha
           and .has_any_findings == false and .has_unresolved_findings == false))
 ' <<< "$comments" > /dev/null
