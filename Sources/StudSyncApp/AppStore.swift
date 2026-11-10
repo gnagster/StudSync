@@ -49,6 +49,10 @@ final class AppStore {
     var isBusy = false
     var paused = false
     var signedIn = false
+    /// Increments after each successful sign-in, so views can leave a sign-in form.
+    private(set) var signInCount = 0
+    /// Increments whenever a password sign-in or web-session adoption starts; it may save new credentials.
+    private(set) var signInAttempts = 0
     var completed = 0
     var total = 0
     var bytes: Int64 = 0
@@ -60,6 +64,8 @@ final class AppStore {
     var changes: [Change] { preferences.changes }
     let client: StudIPClient
     var nextSync: Date?
+    /// Called once per sync with the files it changed; the app wires this to Notification Center.
+    var notifyNewFiles: (@MainActor ([Change]) -> Void)?
     private var engine: SyncEngine?
     private var storageError: String?
     private var task: Task<Void, Never>?
@@ -125,6 +131,7 @@ final class AppStore {
         guard !isBusy else { return }
         guard engine != nil else { message = storageError; return }
         let credentials = Credentials(username: username.trimmingCharacters(in: .whitespacesAndNewlines), password: password)
+        signInAttempts += 1
         reconnectPending = false
         isBusy = true; status = "Signing in…"
         task = Task {
@@ -137,7 +144,7 @@ final class AppStore {
                 try await credentialOperation { try write(credentials) }
                 try Task.checkCancellation()
                 try await loadCourseCatalog()
-                signedIn = true; status = "Ready"; message = nil; feedback[.catalog] = nil
+                signedIn = true; signInCount += 1; status = "Ready"; message = nil; feedback[.catalog] = nil
                 if preferences.selectedCourses.isEmpty && !preferences.setupComplete {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
@@ -168,16 +175,18 @@ final class AppStore {
         try Task.checkCancellation()
         return result
     }
-    func finishSetup() {
-        guard !isBusy, canStartSync else { return }
+    /// Saves the finished setup and starts the first sync; false when it could not start (busy, incomplete, paused or unsaved).
+    @discardableResult func finishSetup() -> Bool {
+        guard !isBusy, canStartSync else { return false }
         let wasComplete = preferences.setupComplete
         preferences.setupComplete = true
         guard save() else {
             preferences.setupComplete = wasComplete
             status = "Settings need attention"
-            return
+            return false
         }
         schedule(); sync()
+        return true
     }
     @discardableResult func save() -> Bool {
         do {
@@ -274,6 +283,8 @@ final class AppStore {
         let selectedIDs = preferences.selectedCourses
         let root = URL(fileURLWithPath: preferences.destination, isDirectory: true)
         task = Task {
+            var fresh: [Change] = []
+            defer { if !fresh.isEmpty { notifyNewFiles?(fresh) } }
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
             do {
                 courses = try await client.courses()
@@ -293,7 +304,7 @@ final class AppStore {
                         if let change = try await engine.synchronize(file, courseID: course.id, root: root, fetch: { [client] in
                             try await client.download(id: file.id)
                         }) {
-                            preferences.changes.insert(change, at: 0)
+                            preferences.changes.insert(change, at: 0); fresh.append(change)
                             preferences.changes = Array(preferences.changes.prefix(200))
                             bytes += file.size
                             save()
@@ -334,13 +345,14 @@ final class AppStore {
         guard showWebLogin, attempt == webLoginAttempt, !isBusy else { return }
         guard engine != nil else { message = storageError; return }
         isBusy = true
+        signInAttempts += 1
         task = Task {
             var source = MessageSource.operation
             defer { isBusy = false; schedule(); resumeAfterNetworkChange() }
             signedIn = false; reconnectPending = false; retrySyncWhenOnline = false
             do {
                 try await client.adopt(cookies: cookies)
-                signedIn = true; reconnectPending = false; password = ""
+                signedIn = true; signInCount += 1; reconnectPending = false; password = ""
                 message = nil; source = .catalog
                 try Task.checkCancellation()
                 try await loadCourseCatalog()

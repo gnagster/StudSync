@@ -250,10 +250,13 @@ struct AppStoreTests {
             return (503, "")
         }
         store.showWebLogin = true
+        let signIns = store.signInCount, attempts = store.signInAttempts
         store.adoptWebSession([], attempt: store.webLoginAttempt)
         try await waitForConnection(store)
         #expect(store.signedIn)
         #expect(store.needsAttention)
+        #expect(store.signInCount == signIns + 1, "a successful sign-in lets Settings leave the account switcher")
+        #expect(store.signInAttempts == attempts + 1, "web adoption counts as a submitted account switch")
         try serveCourses([Course(id: "cc", title: "Course")])
         store.refreshCourses()
         try await waitForConnection(store)
@@ -454,16 +457,16 @@ struct AppStoreTests {
         let permissions = try FileManager.default.attributesOfItem(atPath: settings.path)[.posixPermissions] as? Int
         #expect(permissions == 0o600)
     }
-    @Test func setupPersistenceFailureDoesNotStartSyncOrCompleteSetup() throws {
+    @Test(arguments: [false, true]) func setupPersistenceFailureDoesNotStartSyncAndKeepsCompletion(_ wasComplete: Bool) throws {
         let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data("blocked".utf8).write(to: support)
         defer { try? FileManager.default.removeItem(at: support) }
         ConnectionFixture.response = { _ in Issue.record("Setup must not start network requests after saving fails"); throw URLError(.badURL) }
         let store = store(support: support)
         store.signedIn = true
-        store.preferences.setupComplete = false
-        store.finishSetup()
-        #expect(!store.preferences.setupComplete)
+        store.preferences.setupComplete = wasComplete // true: onboarding rerun after setup
+        #expect(!store.finishSetup())
+        #expect(store.preferences.setupComplete == wasComplete)
         #expect(!store.isBusy)
         #expect(store.preferences.lastSync == nil)
         #expect(store.message != nil)
@@ -692,6 +695,10 @@ struct AppStoreTests {
         #expect(!store.canStartSync)
         store.finishSetup()
         #expect(!store.preferences.setupComplete)
+        // A rerun onboarding (setup already complete) must not advance when the sync cannot start.
+        store.preferences.setupComplete = true
+        #expect(!store.finishSetup())
+        #expect(store.preferences.setupComplete)
     }
     @Test func historicalSelectionsSurviveBrowsingSavingRestartAndSync() async throws {
         let support = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

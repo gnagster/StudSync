@@ -6,4 +6,5 @@
 <key>SUVerifyUpdateBeforeExtraction</key><true/>
 <key>SUEnableAutomaticChecks</key><false/>
 <key>SUAutomaticallyUpdate</key><false/>
+<key>SUShowReleaseNotes</key><false/>
 </dict></plist>

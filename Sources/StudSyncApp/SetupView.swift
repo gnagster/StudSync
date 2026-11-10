@@ -1,23 +1,15 @@
 import SwiftUI
 import AppKit
-import ServiceManagement
 import StudSyncCore
 
 enum StudSyncStyle {
-    static let accent = Color.blue
+    static let accent = Color.accentColor
+    /// The fold red from the logo. Reserved for the "new" marker.
     static let fold = Color(red: 0.90, green: 0.04, blue: 0.06)
 }
 
 enum SetupStep: Int, CaseIterable {
     case account, folder, courses, review
-    var title: String {
-        switch self {
-        case .account: "Connect your university"
-        case .folder: "Choose your Finder folder"
-        case .courses: "Choose courses"
-        case .review: "Ready for your first sync"
-        }
-    }
 }
 
 extension AppStore {
@@ -31,211 +23,220 @@ extension AppStore {
     }
 }
 
+/// Four short pages: connect, folder, courses, first sync. One question per page, one primary action.
 struct SetupView: View {
     @Bindable var store: AppStore
-    @State private var step: SetupStep = .account
-    private var onboarding: Bool { !store.preferences.setupComplete }
+    var close: () -> Void = {}
+    @State var step: SetupStep = .account
+    @State private var folders: [String] = []
+    /// The current-semester default applies once, on a first setup; a selection the user cleared stays empty.
+    @State private var preselected = false
+
+    static let suggestedFolder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Stud.IP", isDirectory: true).path
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                header
-                if onboarding {
-                    steps
-                    switch step {
-                    case .account: account
-                    case .folder: folder
-                    case .courses: courses
-                    case .review: review; preferences
-                    }
-                } else {
-                    account; folder; courses; preferences
+        VStack(spacing: 0) {
+            Group {
+                switch step {
+                case .account: account
+                case .folder: folder
+                case .courses: courses
+                case .review: firstSync
                 }
-                if !onboarding || step == .review { updatePreferences }
-                Text(L("StudSync stays in your menu bar when this window closes."))
-                    .font(.caption).foregroundStyle(.secondary)
-            }.padding(26)
+            }
+            .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 20)
+            if step != .review { FeedbackBar(store: store) }
+            footer
         }
-        .safeAreaInset(edge: .top, spacing: 0) { feedback }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if onboarding { navigation }
-        }
-        .tint(StudSyncStyle.accent)
-        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in store.refreshLaunchAtLogin() }
-        .onChange(of: store.preferences.intervalMinutes) { store.save(); store.schedule() }
-        .onChange(of: store.preferences.selectedCourses) { store.save(); store.schedule() }
+        .frame(width: SettingsLayout.width)
+        .fixedSize(horizontal: false, vertical: true)
         .sheet(isPresented: $store.showWebLogin) { WebLogin(store: store) }
+        .onChange(of: store.preferences.intervalMinutes) { store.save(); store.schedule() }
+        // Rerun after setup, the assistant edits the live selection; save it like Settings does.
+        .onChange(of: store.preferences.selectedCourses) { if store.preferences.setupComplete { store.save(); store.schedule() } }
+        .onChange(of: store.isBusy) { if step == .review { loadFolders() } }
+        .refitsWindow(on: "\(step)\(store.isBusy)\(store.signedIn)\(store.messages.count)\(folders.count)")
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in store.refreshLaunchAtLogin() }
     }
 
-    private var header: some View {
-        HStack(spacing: 18) {
-            Image(nsImage: AppImages.logo)
-                .resizable().scaledToFit().frame(width: 72, height: 72).accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 6) {
-                Text(L(onboarding ? "Welcome to StudSync" : "Your courses, in Finder.")).font(.largeTitle.bold())
-                Text(L("Universität Göttingen · Stud.IP")).font(.subheadline).foregroundStyle(.secondary)
-                Capsule().fill(StudSyncStyle.fold).frame(width: 32, height: 4).accessibilityHidden(true)
-            }
-        }
-    }
-
-    private var steps: some View {
-        HStack(spacing: 8) {
-            ForEach(SetupStep.allCases, id: \.rawValue) { item in
-                VStack(spacing: 6) {
-                    Image(systemName: item.rawValue < step.rawValue ? "checkmark.circle.fill" : "\(item.rawValue + 1).circle.fill")
-                        .font(.title2).foregroundStyle(item.rawValue <= step.rawValue ? StudSyncStyle.accent : Color.secondary)
-                    Text(L(item.title)).font(.caption).multilineTextAlignment(.center)
-                        .foregroundStyle(item == step ? .primary : .secondary)
-                }.frame(maxWidth: .infinity)
-            }
-        }.accessibilityElement(children: .combine)
-    }
-
-    private func card<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(L(title)).font(.headline)
-            content()
-        }
-        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.3), in: RoundedRectangle(cornerRadius: 16))
-        .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(StudSyncStyle.accent.opacity(0.15)))
-    }
+    // MARK: Pages
 
     private var account: some View {
-        card("Connect your university") {
-            TextField(L("Username (without email suffix)"), text: $store.username)
-                .textContentType(.username).disabled(store.isBusy)
-            SecureField(L("Password"), text: $store.password).textContentType(.password).disabled(store.isBusy)
-                .onSubmit { if !store.username.isEmpty && !store.password.isEmpty && !store.isBusy { store.connect() } }
-            HStack {
-                Button(L("Sign in")) { store.connect() }
-                    .buttonStyle(.borderedProminent).disabled(store.username.isEmpty || store.password.isEmpty || store.isBusy)
-                Button(L("University web login…")) { store.showWebLogin = true }.disabled(store.isBusy)
-                if store.signedIn { Label(L("Connected"), systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(.green) }
+        VStack(spacing: 16) {
+            Image(nsImage: AppImages.logo).resizable().scaledToFit().frame(width: 56, height: 56).accessibilityHidden(true)
+            heading("Connect to Stud.IP", "Sign in with your Universität Göttingen account. Your password stays in your Mac’s Keychain.")
+            if store.signedIn {
+                Label(String(format: L("Signed in as %@"), store.username.isEmpty ? L("University web login") : store.username),
+                      systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.secondary).symbolRenderingMode(.multicolor).padding(.top, 8)
+            } else {
+                SignInFields(store: store, showsActions: false).padding(.top, 8)
             }
-            Text(L("Credentials stay in your Mac’s Keychain. StudSync reuses your session and attempts one re-login when it expires."))
-                .font(.caption).foregroundStyle(.secondary)
         }
     }
 
     private var folder: some View {
-        card("Choose your Finder folder") {
-            Label(store.preferences.destination.isEmpty ? L("No folder selected") : store.preferences.destination, systemImage: "folder")
-                .foregroundStyle(.secondary).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            Button(L("Choose…")) { store.chooseDestination() }.disabled(store.isBusy)
+        VStack(spacing: 16) {
+            heading("Where should your courses go?", "StudSync creates one ordinary Finder folder per course.")
+            FolderPreview(path: store.preferences.destination,
+                          folders: store.visibleCourses.map(\.title).sorted { $0.localizedStandardCompare($1) == .orderedAscending },
+                          upcoming: true) {
+                Button(L("Change…")) { store.chooseDestination() }.disabled(store.isBusy)
+            }
             Text(L("Untouched files update automatically. Local edits are kept; incoming versions appear beside them. Server deletions never delete your files."))
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.center)
         }
+        .onAppear { if store.preferences.destination.isEmpty { store.preferences.destination = Self.suggestedFolder } }
     }
 
     private var courses: some View {
-        card("Choose courses") {
-            HStack {
-                Picker(L("Semester"), selection: Binding(get: { store.semesterID }, set: { store.refreshCourses(semesterID: $0) })) {
-                    Text(L("All semesters")).tag("")
-                    ForEach(store.semesters) { term in Text(term.title).tag(term.id) }
-                }
-                Button { store.refreshCourses() } label: { Image(systemName: "arrow.clockwise") }.help(L("Refresh courses"))
-            }.disabled(!store.signedIn || store.isBusy)
-            HStack {
-                Text(L("Selected courses") + ": \(store.preferences.selectedCourses.count)").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Button(L("Select shown")) { store.preferences.selectedCourses.formUnion(store.visibleCourses.map(\.id)) }
-                Button(L("Clear shown")) { store.preferences.selectedCourses.subtract(store.visibleCourses.map(\.id)) }
-            }.font(.caption).disabled(!store.signedIn || store.isBusy)
-            if store.visibleCourses.isEmpty {
-                Text(L(store.signedIn ? "No courses found in this semester. Try another semester or refresh." : "Sign in to load your current courses."))
-                    .foregroundStyle(.secondary).font(.callout)
+        VStack(spacing: 16) {
+            heading("Which courses?", "Your current semester is already selected. You can change this later in Settings.")
+            CoursePicker(store: store, listHeight: 260)
+        }
+        .onAppear {
+            if !preselected, !store.preferences.setupComplete, store.preferences.selectedCourses.isEmpty {
+                store.preferences.selectedCourses = Set(store.visibleCourses.map(\.id))
             }
-            ForEach(store.visibleCourses) { course in
-                Toggle(course.title, isOn: Binding(get: { store.preferences.selectedCourses.contains(course.id) }, set: { selected in
-                    if selected { store.preferences.selectedCourses.insert(course.id) } else { store.preferences.selectedCourses.remove(course.id) }
-                })).disabled(store.isBusy)
-            }
-            Text(L("Selections from other semesters stay selected and sync in the background."))
-                .font(.caption).foregroundStyle(.secondary)
+            preselected = true
         }
     }
 
-    private var review: some View {
-        card("Ready for your first sync") {
-            Label(store.username.isEmpty ? L("University web login") : store.username, systemImage: "person.crop.circle")
-            Label(store.preferences.destination, systemImage: "folder").textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-            Label(L("Selected courses") + ": \(store.preferences.selectedCourses.count)", systemImage: "books.vertical")
-            Text(L("Start your first sync. You can change these choices later in Settings."))
-                .font(.callout).foregroundStyle(.secondary)
-        }
-    }
-
-    private var preferences: some View {
-        card("Sync preferences") {
-            Picker(L("Sync"), selection: $store.preferences.intervalMinutes) {
-                Text(L("Manually")).tag(0)
-                Text(L("Every 15 minutes")).tag(15)
-                Text(L("Hourly")).tag(60)
-                Text(L("Every 4 hours")).tag(240)
-            }
-            Toggle(L("Start at Login"), isOn: Binding(get: { store.launchAtLogin }, set: { store.setLaunchAtLogin($0) }))
-            if store.launchAtLoginStatus == .requiresApproval {
-                Text(L("Allow StudSync in System Settings to finish enabling Start at Login.")).font(.caption).foregroundStyle(.secondary)
-                Button(L("Open Login Items…")) { SMAppService.openSystemSettingsLoginItems() }
-            }
-        }.disabled(store.isBusy)
-    }
-
-    private var updatePreferences: some View {
-        card("App updates") {
-            UpdatePreferences()
-        }
-    }
-
-    private var feedback: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text(L(store.paused ? "Paused" : store.status)).font(.subheadline)
-                Spacer()
-                if store.isBusy {
-                    ProgressView().controlSize(.small)
-                    Button(L("Cancel")) { store.cancel() }
-                } else if !onboarding {
-                    Button(L("Sync now")) { store.sync() }.buttonStyle(.borderedProminent).disabled(!store.canSync)
-                }
-            }
-            if store.isBusy && store.total > 0 { ProgressView(value: Double(store.completed), total: Double(store.total)) }
-            ForEach(store.messages, id: \.self) { message in
-                Label(L(message), systemImage: "info.circle").font(.callout).foregroundStyle(.orange)
-                    .fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
-            }
-        }.padding(.horizontal, 26).padding(.vertical, 14).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
-    }
-
-    private var navigation: some View {
-        HStack {
-            Button(L("Back")) { step = SetupStep(rawValue: step.rawValue - 1) ?? .account }
-                .disabled(step == .account || store.isBusy)
-            Spacer()
-            if step == .review {
-                Button(L("Start syncing")) { store.finishSetup() }
-                    .buttonStyle(.borderedProminent).disabled(!store.canContinueSetup(step)).keyboardShortcut(.defaultAction)
+    private var firstSync: some View {
+        VStack(spacing: 16) {
+            if store.isBusy {
+                heading("Loading your courses", L(store.status))
+                ProgressView(value: Double(store.completed), total: Double(max(store.total, 1)))
+                    .tint(StudSyncStyle.accent)
+                Text("\(store.completed) / \(store.total)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+            } else if !store.messages.isEmpty {
+                heading("First sync needs attention", "Your setup is saved. StudSync tries again at the next sync.")
+                FeedbackBar(store: store).clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else if store.status == "Up to date" {
+                heading("Your courses are in Finder", String(format: L("%lld files from %lld courses are up to date."),
+                                                             store.completed, store.preferences.selectedCourses.count))
             } else {
-                Button(L("Continue")) { step = SetupStep(rawValue: step.rawValue + 1) ?? .review }
-                    .buttonStyle(.borderedProminent).disabled(!store.canContinueSetup(step)).keyboardShortcut(.defaultAction)
+                // Cancelled or stopped without an error message: not a completed first sync.
+                heading("First sync was interrupted", "Your setup is saved. StudSync continues at the next sync.")
             }
-        }.padding(.horizontal, 26).padding(.vertical, 16).background(.bar)
+            FolderPreview(path: store.preferences.destination, folders: folders, upcoming: false, fresh: freshFolders) { EmptyView() }
+            SettingsGroup { SyncPreferenceRows(store: store) }
+        }
+        .onAppear(perform: loadFolders)
+    }
+
+    private func heading(_ title: String, _ subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Text(L(title)).font(.title2.weight(.semibold))
+            Text(L(subtitle)).foregroundStyle(.secondary).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // MARK: Footer
+
+    private var footer: some View {
+        HStack {
+            Group {
+                if step == .review {
+                    Button(L("Close")) { close() }
+                } else if step != .account {
+                    Button(L("Back")) { step = SetupStep(rawValue: step.rawValue - 1) ?? .account }.disabled(store.isBusy)
+                }
+            }
+            .frame(width: 112, alignment: .leading)
+            Spacer()
+            HStack(spacing: 8) {
+                ForEach(SetupStep.allCases, id: \.rawValue) { item in
+                    Circle().fill(item == step ? AnyShapeStyle(StudSyncStyle.accent) : AnyShapeStyle(.quaternary)).frame(width: 6, height: 6)
+                }
+            }
+            .accessibilityElement().accessibilityLabel(String(format: L("Step %lld of %lld"), step.rawValue + 1, SetupStep.allCases.count))
+            Spacer()
+            primary.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).fixedSize()
+                .frame(width: 112, alignment: .trailing)
+        }
+        .padding(.horizontal, 24).padding(.vertical, 16)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    @ViewBuilder private var primary: some View {
+        switch step {
+        case .account where !store.signedIn:
+            Button(L("Sign in")) { store.connect() }.disabled(store.username.isEmpty || store.password.isEmpty || store.isBusy)
+        case .account, .folder:
+            Button(L("Continue")) { step = SetupStep(rawValue: step.rawValue + 1) ?? .review }.disabled(!store.canContinueSetup(step))
+        case .courses:
+            Button(L("Sync")) { if store.finishSetup() { step = .review } }
+                .disabled(!store.canContinueSetup(step))
+        case .review:
+            Button(L("Open in Finder")) { store.reveal(); close() }.disabled(store.isBusy)
+        }
+    }
+
+    // MARK: Data
+
+    private var freshFolders: Set<String> {
+        Set(store.changes.filter { Calendar.current.isDateInToday($0.date) }
+            .compactMap { StatusPanel.courseName(for: $0.path, root: store.preferences.destination) })
+    }
+
+    private func loadFolders() {
+        let root = URL(fileURLWithPath: store.preferences.destination, isDirectory: true)
+        let urls = (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles])) ?? []
+        folders = urls.filter { (try? $0.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true }
+            .map(\.lastPathComponent).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
     }
 }
 
-private struct UpdatePreferences: View {
-    private let updates = AppUpdates.shared
-    @State private var checks = AppUpdates.shared.automaticallyChecks
-    @State private var downloads = AppUpdates.shared.automaticallyDownloads
+/// A small Finder-style window: the chosen folder and the course folders inside it.
+/// While choosing, the course folders are a muted preview; after the first sync they are real and new ones carry the fold-red marker.
+struct FolderPreview<Accessory: View>: View {
+    let path: String
+    let folders: [String]
+    let upcoming: Bool
+    var fresh: Set<String> = []
+    @ViewBuilder let accessory: Accessory
+    private let limit = 4
+
     var body: some View {
-        Toggle(L("Automatically check for updates"), isOn: $checks)
-            .onChange(of: checks) { updates.automaticallyChecks = checks }
-        Toggle(L("Automatically download updates"), isOn: $downloads)
-            .disabled(!checks)
-            .onChange(of: downloads) { updates.automaticallyDownloads = downloads }
-        Button(L("Check for Updates…")) { updates.check() }.disabled(!updates.canCheck)
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Image(nsImage: NSWorkspace.shared.icon(for: .folder)).resizable().frame(width: 32, height: 32).accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text((path as NSString).lastPathComponent).fontWeight(.medium)
+                    Text((path as NSString).abbreviatingWithTildeInPath).font(.caption).foregroundStyle(.secondary)
+                        .lineLimit(1).truncationMode(.middle)
+                }
+                Spacer(minLength: 8)
+                accessory
+            }
+            .padding(12)
+            Divider()
+            VStack(spacing: 0) {
+                if folders.isEmpty {
+                    Text(L(upcoming ? "Your course folders will appear here." : "No course folders yet."))
+                        .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 32)
+                }
+                ForEach(Array(folders.prefix(limit).enumerated()), id: \.offset) { _, name in // course titles can repeat
+                    HStack(spacing: 8) {
+                        Image(nsImage: NSWorkspace.shared.icon(for: .folder)).resizable().frame(width: 16, height: 16)
+                            .opacity(upcoming ? 0.5 : 1).accessibilityHidden(true)
+                        Text(name).lineLimit(1).foregroundStyle(upcoming ? .secondary : .primary)
+                        Spacer(minLength: 8)
+                        if fresh.contains(name) { NewMarker() }
+                    }
+                    .frame(minHeight: 28)
+                }
+                if folders.count > limit {
+                    Text(String(format: L("%lld more"), folders.count - limit)).font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 24, alignment: .leading).padding(.leading, 24)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 8)
+        }
+        .background(.background, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(.separator))
     }
 }

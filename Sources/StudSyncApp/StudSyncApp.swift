@@ -13,6 +13,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             Task { @MainActor in store.networkChanged(available: available) }
         }
         connectivity.start(queue: DispatchQueue(label: "com.gnagster.StudSync.connectivity"))
+        FileNotifications.shared.start(store)
         store.start()
         if !store.preferences.setupComplete { AppWindows.show(store) }
     }
@@ -22,23 +23,112 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 @MainActor
 enum AppWindows {
-    private static var window: NSWindow?
+    private static var setup: NSWindow?
+    private static var settings: NSWindow?
+
+    /// Onboarding until setup is complete, then the native preferences window.
     static func show(_ store: AppStore) {
-        if window == nil {
-            let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 640, height: 720),
-                                  styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            window.title = "StudSync"
-            window.minSize = NSSize(width: 540, height: 550)
+        if store.preferences.setupComplete { present(settings ?? makeSettingsWindow(store)) } else { showOnboarding(store) }
+    }
+
+    /// Runs the onboarding from its first page, also after setup is complete.
+    static func showOnboarding(_ store: AppStore) {
+        settings?.close()
+        let window = setup ?? {
+            let window = NSWindow(contentRect: .zero, styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            window.title = L("Set Up StudSync")
             window.isReleasedWhenClosed = false
-            window.contentView = NSHostingView(rootView: SetupView(store: store))
-            window.center(); window.setFrameAutosaveName("StudSyncSettings")
-            Self.window = window
+            setup = window
+            return window
+        }()
+        if !window.isVisible {
+            window.contentViewController = makeOnboarding(store, close: { setup?.close() })
+            window.center()
         }
-        window?.makeKeyAndOrderFront(nil)
+        present(window)
+    }
+
+    /// The assistant sized to its current page; the window follows the page height.
+    static func makeOnboarding(_ store: AppStore, step: SetupStep = .account, close: @escaping () -> Void = {}) -> NSViewController {
+        let hosting = OnboardingController(rootView: SetupView(store: store, close: close, step: step))
+        // Explicit fitting: automatic preferredContentSize sizing looped endlessly in constraint passes while a sync updated the page.
+        hosting.sizingOptions = []
+        hosting.view.frame.size = hosting.fittingSize
+        return hosting
+    }
+
+    private static func present(_ window: NSWindow) {
+        if window !== setup { setup?.close() }
+        window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    static func makeSettingsWindow(_ store: AppStore) -> NSWindow {
+        let tabs = SettingsTabController()
+        tabs.tabStyle = .toolbar
+        tabs.canPropagateSelectedChildViewControllerTitle = false
+        for tab in SettingsTab.allCases {
+            let hosting = NSHostingController(rootView: SettingsTabView(tab: tab, store: store))
+            hosting.sizingOptions = []
+            let item = NSTabViewItem(viewController: hosting)
+            item.label = L(tab.title)
+            item.image = NSImage(systemSymbolName: tab.symbol, accessibilityDescription: L(tab.title))
+            tabs.addTabViewItem(item)
+        }
+        let window = NSWindow(contentViewController: tabs)
+        window.styleMask = [.titled, .closable]
+        window.toolbarStyle = .preference
+        window.title = L("StudSync Settings")
+        window.isReleasedWhenClosed = false
+        tabs.fitWindow(animate: false)
+        window.center()
+        settings = window
+        return window
     }
 }
 
+/// A window whose content view controller resizes the window to its content.
+@MainActor protocol WindowFitting { func fitWindow(animate: Bool) }
+
+extension NSHostingController {
+    var fittingSize: NSSize { sizeThatFits(in: NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)) }
+}
+
+extension NSWindow {
+    /// Resizes to the given content size, keeping the top edge in place.
+    func fit(contentSize size: NSSize, animate: Bool) {
+        guard size.width > 0, size.height > 0 else { return }
+        let target = frameRect(forContentRect: NSRect(origin: .zero, size: size))
+        guard target.size != frame.size else { return }
+        var frame = frame
+        frame.origin.y += frame.height - target.height
+        frame.size = target.size
+        setFrame(frame, display: true, animate: animate && isVisible)
+    }
+}
+
+/// The setup assistant; it refits the window when its page or content changes.
+final class OnboardingController: NSHostingController<SetupView>, WindowFitting {
+    func fitWindow(animate: Bool) { view.window?.fit(contentSize: fittingSize, animate: animate) }
+}
+
+/// Preferences tabs, each sized to its content: the window grows or shrinks when the tab changes, keeping its top edge.
+final class SettingsTabController: NSTabViewController, WindowFitting {
+    override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+        super.tabView(tabView, didSelect: tabViewItem)
+        fitWindow(animate: true)
+    }
+
+    func fitWindow(animate: Bool) {
+        guard let window = view.window,
+              let hosting = tabViewItems[safe: selectedTabViewItemIndex]?.viewController as? NSHostingController<SettingsTabView> else { return }
+        window.fit(contentSize: hosting.fittingSize, animate: animate)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+}
 @main
 struct StudSyncApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
@@ -52,5 +142,19 @@ struct StudSyncApp: App {
                 .accessibilityLabel("StudSync")
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+extension View {
+    /// Refits content-sized windows after `value` changes, once SwiftUI has applied the change.
+    func refitsWindow<Value: Equatable>(on value: Value) -> some View {
+        onChange(of: value) {
+            // A run-loop block rather than the main queue, so it also runs inside nested run loops.
+            RunLoop.main.perform {
+                MainActor.assumeIsolated {
+                    for window in NSApp.windows where window.isVisible { (window.contentViewController as? WindowFitting)?.fitWindow(animate: true) }
+                }
+            }
+        }
     }
 }
