@@ -53,7 +53,7 @@ if ! otool -L "$APP/Contents/MacOS/StudSync" | grep -Fq '@rpath/Sparkle.framewor
     echo 'Release check failed: Sparkle linkage' >&2
     exit 1
 fi
-for license in StudSync SwiftSoup LRUCache SwiftAtomics Sparkle; do
+for license in StudSync SwiftSoup Sparkle; do
     require "$license license" test -s "$APP/Contents/Resources/Licenses/$license.txt"
 done
 mv "$STAGING/$NAME" "$OUT/$NAME"

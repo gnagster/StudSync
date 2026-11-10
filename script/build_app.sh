@@ -20,8 +20,6 @@ done
 mkdir -p "$APP/Contents/Resources/Licenses"
 install -m 644 UNLICENSE "$APP/Contents/Resources/Licenses/StudSync.txt"
 install -m 644 .build/checkouts/SwiftSoup/LICENSE "$APP/Contents/Resources/Licenses/SwiftSoup.txt"
-install -m 644 .build/checkouts/LRUCache/LICENSE.md "$APP/Contents/Resources/Licenses/LRUCache.txt"
-install -m 644 .build/checkouts/swift-atomics/LICENSE.txt "$APP/Contents/Resources/Licenses/SwiftAtomics.txt"
 install -m 644 .build/checkouts/Sparkle/LICENSE "$APP/Contents/Resources/Licenses/Sparkle.txt"
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
