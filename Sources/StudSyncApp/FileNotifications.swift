@@ -24,14 +24,16 @@ final class FileNotifications: NSObject, UNUserNotificationCenterDelegate {
 
     private func post(_ changes: [Change], root: String) {
         let text = Self.content(for: changes, root: root)
-        let content = UNMutableNotificationContent()
-        content.title = text.title
-        content.body = text.body
-        content.userInfo = ["paths": changes.prefix(20).map(\.path)] // a first sync can bring thousands; keep Finder to a few windows
-        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
-        Task {
-            guard (try? await center.requestAuthorization(options: [.alert])) == true else { return }
-            try? await center.add(request)
+        // A first sync can bring thousands; keep Finder to a few windows.
+        let paths = changes.prefix(20).map(\.path)
+        // Completion handlers with only Sendable captures: older compilers reject sending the center into async calls.
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert]) { @Sendable granted, _ in
+            guard granted else { return }
+            let content = UNMutableNotificationContent()
+            content.title = text.title
+            content.body = text.body
+            content.userInfo = ["paths": paths]
+            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
     }
 
