@@ -27,6 +27,11 @@ echo '[[{"id":1,"user":{"login":"coderabbitai[bot]","type":"Bot"},"state":"APPRO
 echo '[{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"isResolved":true}]}}}}}]' > "$scratch/threads"
 jq -n --arg body '<!-- codex-review-state:v1 {"code_review":{"status":"completed","commit_sha":"reviewed","has_any_findings":false,"has_unresolved_findings":false}} -->' '[[{id:1,user:{login:"chatgpt-codex-connector[bot]",type:"Bot"},body:$body}]]' > "$scratch/comments"
 "$ROOT/script/require_review.sh"
+# Codex reports an unrun security review as an object whose fields are all null.
+jq 'map(map(.body |= sub("}} -->"; "},\"security_review\":{\"commit_sha\":null,\"has_any_findings\":null,\"has_unresolved_findings\":null,\"status\":null}} -->")))' "$scratch/comments" > "$scratch/unrun"
+cp "$scratch/comments" "$scratch/plain"; cp "$scratch/unrun" "$scratch/comments"
+"$ROOT/script/require_review.sh"
+cp "$scratch/plain" "$scratch/comments"
 reject() {
     if "$ROOT/script/require_review.sh" > "$scratch/log" 2>&1; then
         echo "Unexpected review authorization: $1" >&2; exit 1

@@ -22,9 +22,11 @@ jq -e --arg sha "$expected" '
   | capture("<!-- codex-review-state:v1 (?<state>[^\\r\\n]+) -->").state | fromjson
   | (.code_review | .status == "completed" and .commit_sha == $sha
       and .has_any_findings == false and .has_unresolved_findings == false)
-    and (.security_review == null or
-      (.security_review | .status == "completed" and .commit_sha == $sha
-       and .has_any_findings == false and .has_unresolved_findings == false))
+    and (.security_review | . == null
+      or (.status == null and .commit_sha == null
+          and .has_any_findings == null and .has_unresolved_findings == null)
+      or (.status == "completed" and .commit_sha == $sha
+          and .has_any_findings == false and .has_unresolved_findings == false))
 ' <<< "$comments" > /dev/null
 threads="$(gh api graphql --paginate --slurp -F owner="${repo%/*}" -F name="${repo#*/}" -F number="$number" -f query='
 query($owner:String!, $name:String!, $number:Int!, $endCursor:String) {
