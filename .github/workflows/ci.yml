@@ -2,13 +2,15 @@ name: CI
 on:
   push:
     branches: [master]
-  pull_request:
+  pull_request_review:
+    types: [submitted, dismissed]
   schedule:
     - cron: '43 1 * * 1'
 permissions:
   contents: read
+  pull-requests: read
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 jobs:
   scope:
@@ -22,14 +24,18 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
+      - name: Require both current-head reviews and resolved feedback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./script/require_review.sh
       - id: scope
         env:
-          STUDSYNC_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+          STUDSYNC_BASE_SHA: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.base.sha || github.event.before }}
         run: ./script/swift_scan_scope.sh
   native:
     name: Native tests and app bundle
     needs: scope
-    if: always() && github.event_name != 'schedule' && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')
+    if: ${{ !cancelled() && needs.scope.result == 'success' && github.event_name != 'schedule' && needs.scope.outputs.scan == 'true' }}
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
@@ -49,7 +55,7 @@ jobs:
   analyze:
     name: CodeQL (swift)
     needs: scope
-    if: always() && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')
+    if: ${{ !cancelled() && needs.scope.result == 'success' && needs.scope.outputs.scan == 'true' }}
     runs-on: macos-15-intel
     timeout-minutes: 40
     permissions:
