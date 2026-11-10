@@ -27,7 +27,7 @@ final class FileNotifications: NSObject, UNUserNotificationCenterDelegate {
         let content = UNMutableNotificationContent()
         content.title = text.title
         content.body = text.body
-        content.userInfo = ["paths": changes.map(\.path)]
+        content.userInfo = ["paths": changes.prefix(20).map(\.path)] // a first sync can bring thousands; keep Finder to a few windows
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         Task {
             guard (try? await center.requestAuthorization(options: [.alert])) == true else { return }

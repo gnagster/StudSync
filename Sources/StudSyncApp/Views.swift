@@ -48,7 +48,7 @@ struct StatusPanel: View {
         .padding(16).frame(width: 360)
         .background(MenuBarPanelAnchor())
         .onAppear(perform: loadFolders)
-        .onChange(of: store.changes.count) { loadFolders() }
+        .onChange(of: store.changes.first?.id) { loadFolders() } // the history is capped, so its count stops changing
         .onChange(of: store.preferences.destination) { loadFolders() }
     }
 
@@ -207,8 +207,8 @@ struct StatusPanel: View {
 
     static func courseName(for path: String, root: String) -> String? {
         guard !root.isEmpty else { return nil }
-        let base = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL.pathComponents
-        let parts = URL(fileURLWithPath: path).standardizedFileURL.pathComponents
+        let base = URL(fileURLWithPath: root, isDirectory: true).standardizedFileURL.resolvingSymlinksInPath().pathComponents
+        let parts = URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().pathComponents
         guard parts.count > base.count + 1, Array(parts.prefix(base.count)) == base else { return nil }
         return parts[base.count]
     }

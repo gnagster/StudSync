@@ -185,9 +185,10 @@ struct AccountRows: View {
                     }
                 }
             } else {
-                SignInFields(store: store)
+                SignInFields(store: store, cancel: switching ? { switching = false } : nil)
             }
         }
+        .onChange(of: store.signInCount) { switching = false }
         .refitsWindow(on: switching)
     }
 }
@@ -195,6 +196,8 @@ struct AccountRows: View {
 struct SignInFields: View {
     @Bindable var store: AppStore
     var showsActions = true
+    /// Shown while switching accounts, to return to the signed-in summary.
+    var cancel: (() -> Void)? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SettingsGroup {
@@ -215,6 +218,7 @@ struct SignInFields: View {
                 Spacer()
                 if showsActions {
                     if store.isBusy { ProgressView().controlSize(.small) }
+                    if let cancel { Button(L("Cancel"), action: cancel).disabled(store.isBusy) }
                     Button(L("Sign in")) { store.connect() }
                         .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                         .disabled(store.username.isEmpty || store.password.isEmpty || store.isBusy)

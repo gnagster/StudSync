@@ -209,7 +209,7 @@ struct FolderPreview<Accessory: View>: View {
                     Text(L(upcoming ? "Your course folders will appear here." : "No course folders yet."))
                         .font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 32)
                 }
-                ForEach(folders.prefix(limit), id: \.self) { name in
+                ForEach(Array(folders.prefix(limit).enumerated()), id: \.offset) { _, name in // course titles can repeat
                     HStack(spacing: 8) {
                         Image(nsImage: NSWorkspace.shared.icon(for: .folder)).resizable().frame(width: 16, height: 16)
                             .opacity(upcoming ? 0.5 : 1).accessibilityHidden(true)

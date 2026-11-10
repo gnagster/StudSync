@@ -73,7 +73,7 @@ Your password is stored in the macOS Keychain. macOS may ask once whether StudSy
 - **Nothing syncs while offline.** StudSync retries automatically when the connection returns, unless syncing is paused or set to manual.
 - **“Please sign in again.”** The university did not accept the saved session. Open Settings → Account and sign in again.
 - **A course is missing.** Open Settings → Courses, choose the right semester and click ⟳ (Refresh courses).
-- **Start at login does not work.** Keep `StudSync.app` in the Applications folder where you installed it.
+- **Start at login does not work.** If macOS asks for approval, click **Open Login Items…** in Settings → General and allow StudSync. Keep `StudSync.app` in the Applications folder where you installed it.
 
 StudSync does not keep your Mac awake; it syncs the next time your Mac is awake and online.
 

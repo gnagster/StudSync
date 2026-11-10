@@ -49,6 +49,8 @@ final class AppStore {
     var isBusy = false
     var paused = false
     var signedIn = false
+    /// Increments after each successful sign-in, so views can leave a sign-in form.
+    private(set) var signInCount = 0
     var completed = 0
     var total = 0
     var bytes: Int64 = 0
@@ -139,7 +141,7 @@ final class AppStore {
                 try await credentialOperation { try write(credentials) }
                 try Task.checkCancellation()
                 try await loadCourseCatalog()
-                signedIn = true; status = "Ready"; message = nil; feedback[.catalog] = nil
+                signedIn = true; signInCount += 1; status = "Ready"; message = nil; feedback[.catalog] = nil
                 if preferences.selectedCourses.isEmpty && !preferences.setupComplete {
                     preferences.selectedCourses = Set(visibleCourses.map(\.id))
                 }
@@ -344,7 +346,7 @@ final class AppStore {
             signedIn = false; reconnectPending = false; retrySyncWhenOnline = false
             do {
                 try await client.adopt(cookies: cookies)
-                signedIn = true; reconnectPending = false; password = ""
+                signedIn = true; signInCount += 1; reconnectPending = false; password = ""
                 message = nil; source = .catalog
                 try Task.checkCancellation()
                 try await loadCourseCatalog()

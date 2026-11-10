@@ -73,7 +73,7 @@ Dein Passwort liegt im macOS-Schlüsselbund. macOS fragt eventuell einmal, ob St
 - **Offline passiert nichts.** StudSync versucht es automatisch erneut, sobald die Verbindung zurück ist, außer die Synchronisierung ist pausiert oder auf manuell gestellt.
 - **„Bitte erneut anmelden.“** Die Universität hat die gespeicherte Sitzung nicht akzeptiert. Öffne Einstellungen → Konto und melde dich neu an.
 - **Ein Kurs fehlt.** Öffne Einstellungen → Kurse, wähle das passende Semester und klicke auf ⟳ (Kurse aktualisieren).
-- **Start bei Anmeldung funktioniert nicht.** Lass `StudSync.app` in dem Programme-Ordner, in dem du sie installiert hast.
+- **Start bei Anmeldung funktioniert nicht.** Verlangt macOS eine Bestätigung, klicke in Einstellungen → Allgemein auf **Anmeldeobjekte öffnen …** und erlaube StudSync. Lass `StudSync.app` in dem Programme-Ordner, in dem du sie installiert hast.
 
 StudSync hält deinen Mac nicht wach; die App synchronisiert, sobald der Mac das nächste Mal wach und online ist.
 

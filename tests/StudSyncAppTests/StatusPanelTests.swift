@@ -14,6 +14,18 @@ import StudSyncCore
         #expect(StatusPanel.courseName(for: "/Users/a/Stud.IP/Kurs/v1.pdf", root: "") == nil)
     }
 
+    @Test func courseNameMatchesASyncRootReachedThroughASymlink() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let real = base.appendingPathComponent("real")
+        try FileManager.default.createDirectory(at: real.appendingPathComponent("Analysis I"), withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let link = base.appendingPathComponent("link")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        // Sync writes resolved paths while preferences keep the chosen (linked) folder.
+        let file = real.resolvingSymlinksInPath().appendingPathComponent("Analysis I/v1.pdf").path
+        #expect(StatusPanel.courseName(for: file, root: link.path) == "Analysis I")
+    }
+
     @Test func changesAreGroupedByConsecutiveDayInOrder() throws {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = try #require(TimeZone(identifier: "Europe/Berlin"))
