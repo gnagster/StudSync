@@ -82,3 +82,8 @@
 "Check for Updates…" = "Nach Updates suchen …";
 "Automatically check for updates" = "Automatisch nach Updates suchen";
 "Automatically download updates" = "Updates automatisch laden";
+"More" = "Mehr";
+"%lld new" = "%lld neu";
+"New" = "Neu";
+"Synced %@" = "Abgeglichen %@";
+"Next %@" = "Nächster %@";

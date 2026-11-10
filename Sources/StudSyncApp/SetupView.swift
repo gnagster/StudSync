@@ -4,7 +4,7 @@ import ServiceManagement
 import StudSyncCore
 
 enum StudSyncStyle {
-    static let accent = Color.blue
+    static let accent = Color.accentColor
     static let fold = Color(red: 0.90, green: 0.04, blue: 0.06)
 }
 
