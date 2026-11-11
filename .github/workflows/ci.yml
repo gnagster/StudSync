@@ -7,8 +7,10 @@ on:
     - cron: '43 1 * * 1'
 permissions:
   contents: read
+# Newer pushes cancel older runs of the same PR; master pushes and scheduled scans never cancel
+# each other, so every code-changing master push keeps its CodeQL scan.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 jobs:
   scope:
