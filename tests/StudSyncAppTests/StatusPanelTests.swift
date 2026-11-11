@@ -100,7 +100,7 @@ import StudSyncCore
 
 @MainActor struct OnboardingDuringSyncTests {
     /// Regression: opening the assistant while a sync updated the store crashed in an endless constraint pass.
-    @Test func onboardingSurvivesStoreUpdatesWhileOnScreen() throws {
+    @Test func onboardingSurvivesStoreUpdatesWhileOnScreen() async throws {
         _ = NSApplication.shared
         let store = try ReadmeScreenshots.sampleStore()
         for step in SetupStep.allCases {
@@ -113,10 +113,10 @@ import StudSyncCore
                 store.isBusy = round.isMultiple(of: 2)
                 store.total = 40; store.completed = round * 6
                 store.status = round.isMultiple(of: 2) ? "Analysis I" : "Up to date"
-                RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+                await spinRunLoop(0.05)
                 window.layoutIfNeeded()
             }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.6)) // let the animated refit finish
+            await spinRunLoop(0.6) // let the animated refit finish
             let content = window.contentRect(forFrameRect: window.frame)
             #expect(abs(content.width - SettingsLayout.width) < 1, "\(step) width \(content.width)")
             let fitted = try #require(controller as? OnboardingController).fittingSize
@@ -128,7 +128,7 @@ import StudSyncCore
 
 @MainActor struct ContentFitTests {
     /// Regression: the settings window kept its height when the open tab's content changed.
-    @Test func settingsWindowRefitsWhenTheOpenTabChanges() throws {
+    @Test func settingsWindowRefitsWhenTheOpenTabChanges() async throws {
         _ = NSApplication.shared
         let store = try ReadmeScreenshots.sampleStore()
         let window = AppWindows.makeSettingsWindow(store)
@@ -136,10 +136,10 @@ import StudSyncCore
         let tabs = try #require(window.contentViewController as? SettingsTabController)
         tabs.selectedTabViewItemIndex = try #require(SettingsTab.allCases.firstIndex(of: .account))
         window.orderFrontRegardless()
-        RunLoop.current.run(until: Date().addingTimeInterval(0.6))
+        await spinRunLoop(0.6)
         let signedIn = window.contentRect(forFrameRect: window.frame).height
         store.signedIn = false
-        RunLoop.current.run(until: Date().addingTimeInterval(0.8))
+        await spinRunLoop(0.8)
         let signedOut = window.contentRect(forFrameRect: window.frame).height
         let fitted = try #require(tabs.tabViewItems[tabs.selectedTabViewItemIndex].viewController as? NSHostingController<SettingsTabView>).fittingSize
         #expect(signedOut != signedIn)
@@ -147,9 +147,9 @@ import StudSyncCore
     }
 
     /// Regression: many course folders grew the menu-bar panel beyond the screen.
-    @Test func panelCourseListScrollsBeyondItsLimit() throws {
+    @Test func panelCourseListScrollsBeyondItsLimit() async throws {
         _ = NSApplication.shared
-        func height(folders count: Int) throws -> CGFloat {
+        func height(folders count: Int) async throws -> CGFloat {
             let store = try ReadmeScreenshots.sampleStore()
             let root = URL(fileURLWithPath: store.preferences.destination)
             for index in 0..<count { try FileManager.default.createDirectory(at: root.appendingPathComponent("Kurs \(index)"), withIntermediateDirectories: true) }
@@ -157,11 +157,24 @@ import StudSyncCore
             let window = NSWindow(contentViewController: panel)
             defer { window.close() }
             window.orderFrontRegardless()
-            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+            await spinRunLoop(0.3)
             return panel.fittingSize.height
         }
-        let atLimit = try height(folders: StatusPanel.visibleFolders - 4) // sample data already has four folders
-        let many = try height(folders: 40)
+        let atLimit = try await height(folders: StatusPanel.visibleFolders - 4) // sample data already has four folders
+        let many = try await height(folders: 40)
         #expect(many - atLimit < 32, "\(atLimit) vs \(many)")
+    }
+}
+
+/// Synchronous so it may run the loop from the async helper below.
+@MainActor private func runMainLoop(until date: Date) { RunLoop.main.run(until: date) }
+
+/// Runs the main run loop for `seconds` in short slices, yielding the main actor in between so tests that
+/// run in parallel and poll with wall-clock deadlines (AppStoreTests) are not starved.
+@MainActor func spinRunLoop(_ seconds: TimeInterval) async {
+    let deadline = Date().addingTimeInterval(seconds)
+    while Date() < deadline {
+        runMainLoop(until: min(deadline, Date().addingTimeInterval(0.01)))
+        await Task.yield()
     }
 }
