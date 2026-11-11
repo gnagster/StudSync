@@ -32,7 +32,8 @@ import Testing
         }
         // The band moves: the logo's middle is bright in some frames and dimmed in others.
         let middles = try AppImages.menuBarSyncFrames.map { frame in
-            let rep = try #require(NSBitmapImageRep(data: try #require(frame.tiffRepresentation)))
+            let data = try #require(frame.tiffRepresentation)
+            let rep = try #require(NSBitmapImageRep(data: data))
             return try #require(rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)).alphaComponent
         }
         #expect(middles.max()! > 0.8)
