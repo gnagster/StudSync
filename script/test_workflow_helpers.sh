@@ -67,14 +67,15 @@ test ! -e "$scratch/Invalid.app" || exit 1
 
 # The pre-push hook runs swift test for code changes and skips documentation-only pushes.
 mkdir -p "$scratch/bin"
-printf '#!/usr/bin/env bash\necho ran >> "$SWIFT_MARKER"\n' > "$scratch/bin/swift"
+# Fails like SwiftPM's dependency checkouts if the hook's GIT_DIR leaks into swift.
+printf '#!/usr/bin/env bash\n[[ -z "${GIT_DIR:-}" ]] || exit 1\necho ran >> "$SWIFT_MARKER"\n' > "$scratch/bin/swift"
 chmod +x "$scratch/bin/swift"
 git checkout -q -B master "$base"
 git update-ref refs/remotes/origin/master "$base"
 pre_push() {
     rm -f "$scratch/swift-ran"
     printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$1" \
-        | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+        | GIT_DIR="$(git rev-parse --absolute-git-dir)" PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
     if [[ "$2" == ran ]]; then test -s "$scratch/swift-ran" || exit 1; else test ! -e "$scratch/swift-ran" || exit 1; fi
 }
 zero=0000000000000000000000000000000000000000
@@ -84,6 +85,6 @@ pre_push "$zero" skipped # New branches compare against origin/master.
 echo '// Code' > Sources/Code.swift; git add .; git commit -qm code
 pre_push "$base" ran
 printf 'refs/heads/topic %s refs/heads/topic %s\n' "$base" "$zero" \
-    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+    | GIT_DIR="$(git rev-parse --absolute-git-dir)" PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
 test -s "$scratch/swift-ran" || exit 1 # Pushing a commit other than HEAD always tests.
 echo 'Workflow helper regressions passed.'

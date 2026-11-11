@@ -4,6 +4,8 @@ set -euo pipefail
 # Hosted CI stays authoritative; this catches failures before a review and CI round trip.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$(git rev-parse --show-toplevel)"
+# Git exports GIT_DIR and friends to hooks; SwiftPM's dependency checkouts must not inherit them.
+unset $(git rev-parse --local-env-vars)
 zero=0000000000000000000000000000000000000000
 needed=false
 while read -r local_ref local_sha remote_ref remote_sha; do
