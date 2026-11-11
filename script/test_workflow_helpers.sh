@@ -86,7 +86,14 @@ pre_push "$base" skipped
 pre_push "$zero" skipped # New branches compare against origin/master.
 echo '// Code' > Sources/Code.swift; git add .; git commit -qm code
 pre_push "$base" ran
-printf 'refs/heads/topic %s refs/heads/topic %s\n' "$base" "$zero" \
-    | GIT_DIR="$(git rev-parse --absolute-git-dir)" PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
-test -s "$scratch/swift-ran" || exit 1 # Pushing a commit other than HEAD always tests.
+# Pushing a commit other than HEAD is refused instead of testing the wrong checkout.
+rm -f "$scratch/swift-ran"
+if printf 'refs/heads/other %s refs/heads/other %s\n' "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'check out refs/heads/other before pushing it' "$scratch/error" || exit 1
+test ! -e "$scratch/swift-ran" || exit 1
+# Release tags are pushed without a local test run, even for another commit.
+printf 'refs/tags/v9.9.9 %s refs/tags/v9.9.9 %s\n' "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+test ! -e "$scratch/swift-ran" || exit 1
 echo 'Workflow helper regressions passed.'

@@ -16,7 +16,7 @@ PRs package the debug build that `swift test` already compiled (`STUDSYNC_BUILD_
 
 CodeQL (`codeql.yml`, reusable) runs on master pushes that change code, the weekly scan, and in the release workflow before any draft is created. It stays on `macos-15-intel` (the CodeQL tracer needs Rosetta on Apple Silicon) with a clean, uncached traced build and the first-party source coverage check. PRs do not run CodeQL.
 
-The pre-push hook (`.githooks/pre-push` → `script/pre_push.sh`, enabled with `git config core.hooksPath .githooks`) runs `swift test` locally unless every pushed ref only changes allowlisted documentation. Hosted CI stays authoritative; the local Swift toolchain can be newer than CI's Xcode 16.4.
+The pre-push hook (`.githooks/pre-push` → `script/pre_push.sh`, enabled with `git config core.hooksPath .githooks`) runs `swift test` locally unless every pushed ref only changes allowlisted documentation. It refuses to push a branch commit other than the checked-out `HEAD` (check that branch out first); release tag pushes skip the local run. Hosted CI stays authoritative; the local Swift toolchain can be newer than CI's Xcode 16.4.
 
 Before merging, inspect the actual current-head Codex clean summary plus 👍, CodeRabbit approval, feedback decisions, resolved conversations and required Change scope/native/CodeRabbit checks. Preserve the SHA-matched immediately-mergeable auto-merge procedure in `AGENTS.md`; do not leave deferred auto-merge enabled. A successful CodeRabbit check alone can mean skipped/rate-limited work and is insufficient. Authors cannot formally approve their own PRs.
 
