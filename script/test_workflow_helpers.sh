@@ -108,6 +108,16 @@ if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$
     | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
 grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
 rm -r tests
+# Gitignored files inside targets are still compiled by SwiftPM; Finder metadata is not.
+printf 'local/\n' > .gitignore
+mkdir -p Sources/local; echo '// Ignored helper' > Sources/local/Helper.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
+rm -r Sources/local .gitignore
+touch Sources/.DS_Store
+pre_push "$base" ran
+rm Sources/.DS_Store
 mkdir -p output; echo 'Scratch' > output/notes.txt
 pre_push "$base" ran
 rm -r output
