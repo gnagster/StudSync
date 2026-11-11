@@ -55,4 +55,24 @@ import Testing
         #expect(abs(window.frame.maxY - top) <= 0.5)
         #expect(window.frame.minX == frame.minX)
     }
+
+    /// Regression: after a sync the panel kept its taller progress-bar height, leaving bare glass above and below.
+    @Test func menuBarPanelShrinksToItsContent() async throws {
+        _ = NSApplication.shared
+        let screen = try #require(NSScreen.main)
+        let window = NSWindow(contentRect: NSRect(x: screen.visibleFrame.midX, y: screen.visibleFrame.midY, width: 360, height: 680),
+                              styleMask: .borderless, backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let anchor = MenuBarPanelAnchor.AnchorView(frame: NSRect(x: 0, y: 22, width: 360, height: 680))
+        window.contentView = NSView()
+        window.contentView?.addSubview(anchor)
+        let top = min(screen.visibleFrame.maxY, screen.frame.maxY - NSStatusBar.system.thickness)
+        await spinRunLoop(0.1)
+        #expect(window.frame.height == 680)
+        anchor.setFrameSize(NSSize(width: 360, height: 636)) // the content shrank; the window did not
+        await spinRunLoop(0.1)
+        #expect(window.frame.height == 636)
+        #expect(abs(window.frame.maxY - top) <= 0.5)
+    }
 }
