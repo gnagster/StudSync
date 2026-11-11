@@ -31,6 +31,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     fi
 done # Every ref is checked before testing; a multi-ref push cannot slip a non-HEAD branch through.
 if [[ "$needed" == true ]]; then
+    # swift test builds the working tree, so uncommitted build inputs could pass a failing commit.
+    if ! git diff --quiet HEAD -- || [[ -n "$(git ls-files --others --exclude-standard -- Sources Tests 'Package.*')" ]]; then
+        echo 'pre-push: commit or stash local changes first, so swift test runs on the pushed commit.' >&2
+        exit 1
+    fi
     echo 'pre-push: running swift test (documentation-only pushes skip this).'
     swift test
 fi

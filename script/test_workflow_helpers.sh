@@ -92,6 +92,19 @@ if printf 'refs/heads/other %s refs/heads/other %s\n' "$base" "$zero" \
     | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
 grep -Fq 'check out refs/heads/other before pushing it' "$scratch/error" || exit 1
 test ! -e "$scratch/swift-ran" || exit 1
+# Uncommitted tracked edits or untracked sources are refused; unrelated untracked files are not.
+echo '// Uncommitted fix' >> Sources/Code.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
+git checkout -q -- Sources/Code.swift
+echo '// Untracked' > Sources/Untracked.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+rm Sources/Untracked.swift
+mkdir -p output; echo 'Scratch' > output/notes.txt
+pre_push "$base" ran
+rm -r output
 # A later non-HEAD branch is refused even when an earlier ref already requires tests.
 rm -f "$scratch/swift-ran"
 if printf 'refs/heads/topic %s refs/heads/topic %s\nrefs/heads/other %s refs/heads/other %s\n' "$(git rev-parse HEAD)" "$base" "$base" "$zero" \
