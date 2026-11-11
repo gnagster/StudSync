@@ -16,7 +16,7 @@ This personal build is ad-hoc signed and not notarized. Keep the app at its inst
 
 ## Verification
 
-Automated verification runs in GitHub Actions after review; contributors do not need to run the checks locally. `script/verify.sh` remains available as shared tooling:
+Hosted CI in GitHub Actions is authoritative, but running checks locally before pushing is encouraged and saves review and CI round trips. The pre-push hook (`git config core.hooksPath .githooks`) runs `swift test` for non-documentation pushes; `script/verify.sh` runs the full suite:
 
 ```sh
 ./script/verify.sh
