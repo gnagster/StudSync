@@ -21,15 +21,15 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     if [[ "$base" == "$zero" ]]; then
         base="$(git merge-base "$local_sha" origin/master 2>/dev/null || true)"
     fi
-    if [[ -z "$base" ]]; then needed=true; break; fi
+    if [[ -z "$base" ]]; then needed=true; continue; fi
     output="$(mktemp)"
     if GITHUB_EVENT_NAME=pull_request STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$output" "$SCRIPT_DIR/swift_scan_scope.sh" > /dev/null 2>&1 \
         && grep -Fxq 'scan=false' "$output"; then
         rm -f "$output"
     else
-        rm -f "$output"; needed=true; break
+        rm -f "$output"; needed=true
     fi
-done
+done # Every ref is checked before testing; a multi-ref push cannot slip a non-HEAD branch through.
 if [[ "$needed" == true ]]; then
     echo 'pre-push: running swift test (documentation-only pushes skip this).'
     swift test

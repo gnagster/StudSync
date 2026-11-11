@@ -92,6 +92,12 @@ if printf 'refs/heads/other %s refs/heads/other %s\n' "$base" "$zero" \
     | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
 grep -Fq 'check out refs/heads/other before pushing it' "$scratch/error" || exit 1
 test ! -e "$scratch/swift-ran" || exit 1
+# A later non-HEAD branch is refused even when an earlier ref already requires tests.
+rm -f "$scratch/swift-ran"
+if printf 'refs/heads/topic %s refs/heads/topic %s\nrefs/heads/other %s refs/heads/other %s\n' "$(git rev-parse HEAD)" "$base" "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'check out refs/heads/other before pushing it' "$scratch/error" || exit 1
+test ! -e "$scratch/swift-ran" || exit 1
 # Release tags are pushed without a local test run, even for another commit.
 printf 'refs/tags/v9.9.9 %s refs/tags/v9.9.9 %s\n' "$base" "$zero" \
     | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
