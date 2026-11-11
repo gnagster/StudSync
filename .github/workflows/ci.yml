@@ -2,42 +2,54 @@ name: CI
 on:
   push:
     branches: [master]
-  pull_request_review:
-    types: [submitted, dismissed]
+  pull_request:
   schedule:
     - cron: '43 1 * * 1'
 permissions:
   contents: read
-  pull-requests: read
+# Newer pushes cancel older runs of the same PR; master pushes and scheduled scans never cancel
+# each other, so every code-changing master push keeps its CodeQL scan.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 jobs:
   scope:
-    name: Change scope
+    name: Classify changes
     runs-on: ubuntu-24.04
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
     outputs:
       scan: ${{ steps.scope.outputs.scan }}
+      tested: ${{ steps.tested.outputs.tested }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           fetch-depth: 0
-      - name: Require both current-head reviews and resolved feedback
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: ./script/require_review.sh
       - id: scope
         env:
-          STUDSYNC_BASE_SHA: ${{ github.event_name == 'pull_request_review' && github.event.pull_request.base.sha || github.event.before }}
+          STUDSYNC_BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
         run: ./script/swift_scan_scope.sh
+      - id: tested
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./script/pr_tested_tree.sh
   native:
     name: Native tests and app bundle
     needs: scope
-    if: ${{ !cancelled() && needs.scope.result == 'success' && github.event_name != 'schedule' && needs.scope.outputs.scan == 'true' }}
-    runs-on: macos-15-intel
+    # Skip only after a successful documentation-only classification; a failed classification runs
+    # this required job so its first step fails instead of a skip counting as a pass.
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true') }}
+    runs-on: macos-15
     timeout-minutes: 20
+    env:
+      # PRs bundle the debug build that swift test already compiled; master and tags build release.
+      STUDSYNC_BUILD_CONFIGURATION: ${{ github.event_name == 'pull_request' && 'debug' || 'release' }}
+      # A squash merge whose tree already passed PR CI only rebuilds the release bundle.
+      RUN_TESTS: ${{ needs.scope.outputs.tested != 'true' }}
     steps:
       - name: Require successful change classification
         env:
@@ -46,38 +58,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - run: ./script/test_workflow_helpers.sh
-      - run: ./script/test_release_helpers.sh
-      - run: swift test
-      - run: ./script/test_updates.sh
+      # Dependency checkouts and compiled dependencies only; first-party sources rebuild from fresh mtimes.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .build
+          key: native-${{ runner.os }}-${{ runner.arch }}-${{ env.STUDSYNC_BUILD_CONFIGURATION }}-${{ hashFiles('Package.resolved') }}-${{ github.sha }}
+          restore-keys: |
+            native-${{ runner.os }}-${{ runner.arch }}-${{ env.STUDSYNC_BUILD_CONFIGURATION }}-${{ hashFiles('Package.resolved') }}-
+      - if: env.RUN_TESTS == 'true'
+        run: ./script/test_workflow_helpers.sh
+      - if: env.RUN_TESTS == 'true'
+        run: ./script/test_release_helpers.sh
+      - if: env.RUN_TESTS == 'true'
+        run: swift test
+      - if: env.RUN_TESTS == 'true'
+        run: ./script/test_updates.sh
       - run: ./script/package_release.sh 0.1.0 "$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/release-test"
       - run: ./script/test_release_bundle.sh "$RUNNER_TEMP/release-test/StudSync-0.1.0-arm64.zip"
-  analyze:
-    name: CodeQL (swift)
+  codeql:
+    name: CodeQL
     needs: scope
-    if: ${{ !cancelled() && needs.scope.result == 'success' && needs.scope.outputs.scan == 'true' }}
-    runs-on: macos-15-intel
-    timeout-minutes: 40
+    # PRs skip CodeQL; master pushes, the weekly scan and every release run it.
+    if: ${{ !cancelled() && needs.scope.result == 'success' && github.event_name != 'pull_request' && needs.scope.outputs.scan == 'true' }}
     permissions:
       contents: read
       security-events: write
       actions: read
-    steps:
-      - name: Require successful change classification
-        env:
-          SCOPE_RESULT: ${{ needs.scope.result }}
-        run: test "$SCOPE_RESULT" = success
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
-        with:
-          languages: swift
-          build-mode: manual
-          db-location: ${{ runner.temp }}/codeql_databases
-      - run: swift build --arch arm64 --verbose
-      - uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4
-      - name: Verify first-party Swift source coverage
-        env:
-          STUDSYNC_CODEQL_DATABASE: ${{ runner.temp }}/codeql_databases/swift
-        run: ./script/verify_codeql_sources.sh
+    uses: ./.github/workflows/codeql.yml

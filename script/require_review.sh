@@ -7,7 +7,7 @@ expected="$(jq -er '.pull_request.head.sha' "$GITHUB_EVENT_PATH")"
 base="$(jq -er '.pull_request.base.sha' "$GITHUB_EVENT_PATH")"
 repo="${GITHUB_REPOSITORY:?}"
 pr="$(gh api "repos/$repo/pulls/$number")"
-# Fork PRs get read-only review-event tokens, so CodeQL could not upload; fail closed.
+# Fork PRs are not reviewed through this gate; fail closed.
 jq -e --arg sha "$expected" --arg base "$base" --arg repo "$repo" '.state == "open" and .draft == false and .head.sha == $sha and .base.sha == $base and .head.repo.full_name == $repo' <<< "$pr" > /dev/null
 reviews="$(gh api --paginate --slurp "repos/$repo/pulls/$number/reviews?per_page=100")"
 jq -e --arg sha "$expected" '

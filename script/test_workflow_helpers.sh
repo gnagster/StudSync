@@ -2,6 +2,11 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$ROOT/script/test_review_gate.sh"
+"$ROOT/script/test_tested_tree.sh"
+# A failed classification must run (and fail) the required native job, never skip it.
+# Master pushes must not cancel each other's CodeQL scans.
+grep -Fq 'group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}' "$ROOT/.github/workflows/ci.yml" || { echo 'Master CI runs can cancel each other.' >&2; exit 1; }
+grep -Fq "(needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')" "$ROOT/.github/workflows/ci.yml" || { echo 'Native job can skip after failed classification.' >&2; exit 1; }
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/repo/Sources" "$scratch/repo/docs" "$scratch/db"
@@ -29,19 +34,6 @@ echo 'Agent instructions' > AGENTS.md
 echo 'Security instructions' > SECURITY.md
 git add .; git commit -qm docs
 scope false
-docs="$(git rev-parse HEAD)"
-git checkout -q --detach "$base"
-echo '// Newer base' > Sources/Base.swift
-git add .; git commit -qm newer-base
-stale_base="$(git rev-parse HEAD)"
-git checkout -q --detach "$base"
-git merge -q --no-ff --no-edit "$docs"
-# Review events use the merge commit's own base, even when the event base is newer.
-: > "$scratch/output"
-GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$stale_base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
-grep -Fxq 'scan=false' "$scratch/output"
-git checkout -q --detach "$docs"
-if GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh" > "$scratch/error" 2>&1; then exit 1; fi
 : > "$scratch/output"
 GITHUB_EVENT_NAME=push STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
 grep -Fxq 'scan=false' "$scratch/output"
@@ -71,4 +63,72 @@ if STUDSYNC_CODEQL_DATABASE="$scratch/db" "$ROOT/script/verify_codeql_sources.sh
 rm Sources/Missing.swift Sources/Test.swift
 if STUDSYNC_CODEQL_DATABASE="$scratch/db" "$ROOT/script/verify_codeql_sources.sh" > "$scratch/error" 2>&1; then exit 1; fi
 if STUDSYNC_CODEQL_DATABASE="$scratch/absent" "$ROOT/script/verify_codeql_sources.sh" > "$scratch/error" 2>&1; then exit 1; fi
+if STUDSYNC_BUILD_CONFIGURATION=fast "$ROOT/script/build_app.sh" "$scratch/Invalid.app" > "$scratch/error" 2>&1; then exit 1; fi
+grep -Fq 'STUDSYNC_BUILD_CONFIGURATION must be release or debug.' "$scratch/error" || exit 1
+test ! -e "$scratch/Invalid.app" || exit 1
+
+# The pre-push hook runs swift test for code changes and skips documentation-only pushes.
+mkdir -p "$scratch/bin"
+# Fails like SwiftPM's dependency checkouts if the hook's GIT_DIR leaks into swift.
+printf '#!/usr/bin/env bash\n[[ -z "${GIT_DIR:-}" ]] || exit 1\necho ran >> "$SWIFT_MARKER"\n' > "$scratch/bin/swift"
+chmod +x "$scratch/bin/swift"
+git checkout -q -B master "$base"
+git update-ref refs/remotes/origin/master "$base"
+pre_push() {
+    rm -f "$scratch/swift-ran"
+    printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$1" \
+        | GIT_DIR="$(git rev-parse --absolute-git-dir)" PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+    if [[ "$2" == ran ]]; then test -s "$scratch/swift-ran" || exit 1; else test ! -e "$scratch/swift-ran" || exit 1; fi
+}
+zero=0000000000000000000000000000000000000000
+echo 'More notes' >> README.md; git commit -qam docs-only
+pre_push "$base" skipped
+pre_push "$zero" skipped # New branches compare against origin/master.
+echo '// Code' > Sources/Code.swift; git add .; git commit -qm code
+pre_push "$base" ran
+# Pushing a commit other than HEAD is refused instead of testing the wrong checkout.
+rm -f "$scratch/swift-ran"
+if printf 'refs/heads/other %s refs/heads/other %s\n' "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'check out refs/heads/other before pushing it' "$scratch/error" || exit 1
+test ! -e "$scratch/swift-ran" || exit 1
+# Uncommitted tracked edits or untracked sources are refused; unrelated untracked files are not.
+echo '// Uncommitted fix' >> Sources/Code.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
+git checkout -q -- Sources/Code.swift
+echo '// Untracked' > Sources/Untracked.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+rm Sources/Untracked.swift
+# Test targets live in lowercase tests/ (Package.swift paths).
+mkdir -p tests/StudSyncCoreTests; echo '// Untracked helper' > tests/StudSyncCoreTests/Helper.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
+rm -r tests
+# Gitignored files inside targets are still compiled by SwiftPM; Finder metadata is not.
+printf 'local/\n' > .gitignore
+mkdir -p Sources/local; echo '// Ignored helper' > Sources/local/Helper.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
+rm -r Sources/local .gitignore
+touch Sources/.DS_Store
+pre_push "$base" ran
+rm Sources/.DS_Store
+mkdir -p output; echo 'Scratch' > output/notes.txt
+pre_push "$base" ran
+rm -r output
+# A later non-HEAD branch is refused even when an earlier ref already requires tests.
+rm -f "$scratch/swift-ran"
+if printf 'refs/heads/topic %s refs/heads/topic %s\nrefs/heads/other %s refs/heads/other %s\n' "$(git rev-parse HEAD)" "$base" "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'check out refs/heads/other before pushing it' "$scratch/error" || exit 1
+test ! -e "$scratch/swift-ran" || exit 1
+# Release tags are pushed without a local test run, even for another commit.
+printf 'refs/tags/v9.9.9 %s refs/tags/v9.9.9 %s\n' "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+test ! -e "$scratch/swift-ran" || exit 1
 echo 'Workflow helper regressions passed.'
