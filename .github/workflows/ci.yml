@@ -38,7 +38,9 @@ jobs:
   native:
     name: Native tests and app bundle
     needs: scope
-    if: ${{ !cancelled() && needs.scope.result == 'success' && github.event_name != 'schedule' && needs.scope.outputs.scan == 'true' }}
+    # Skip only after a successful documentation-only classification; a failed classification runs
+    # this required job so its first step fails instead of a skip counting as a pass.
+    if: ${{ !cancelled() && github.event_name != 'schedule' && (needs.scope.result != 'success' || needs.scope.outputs.scan == 'true') }}
     runs-on: macos-15
     timeout-minutes: 20
     env:

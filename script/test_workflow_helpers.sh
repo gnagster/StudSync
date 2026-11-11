@@ -3,6 +3,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$ROOT/script/test_review_gate.sh"
 "$ROOT/script/test_tested_tree.sh"
+# A failed classification must run (and fail) the required native job, never skip it.
+grep -Fq "(needs.scope.result != 'success' || needs.scope.outputs.scan == 'true')" "$ROOT/.github/workflows/ci.yml" || { echo 'Native job can skip after failed classification.' >&2; exit 1; }
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/repo/Sources" "$scratch/repo/docs" "$scratch/db"
