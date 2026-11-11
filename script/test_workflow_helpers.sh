@@ -102,6 +102,12 @@ echo '// Untracked' > Sources/Untracked.swift
 if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
     | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
 rm Sources/Untracked.swift
+# Test targets live in lowercase tests/ (Package.swift paths).
+mkdir -p tests/StudSyncCoreTests; echo '// Untracked helper' > tests/StudSyncCoreTests/Helper.swift
+if printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$base" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null 2> "$scratch/error"; then exit 1; fi
+grep -Fq 'commit or stash local changes first' "$scratch/error" || exit 1
+rm -r tests
 mkdir -p output; echo 'Scratch' > output/notes.txt
 pre_push "$base" ran
 rm -r output
