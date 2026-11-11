@@ -137,11 +137,53 @@ struct StudSyncApp: App {
         MenuBarExtra {
             StatusPanel(store: store)
         } label: {
-            Image(nsImage: store.needsAttention ? AppImages.menuBarError : AppImages.menuBar)
-                .renderingMode(store.needsAttention ? .original : .template)
-                .accessibilityLabel("StudSync")
+            MenuBarIcon(state: store.isBusy ? .syncing : store.needsAttention ? .error : .idle)
         }
         .menuBarExtraStyle(.window)
+    }
+}
+
+enum MenuBarIconState: CaseIterable { case idle, syncing, error }
+
+/// The menu-bar logo: template while idle, animated while busy, red when something needs attention.
+/// Launch with `-StudSyncIconDemo YES` to cycle through all states.
+struct MenuBarIcon: View {
+    let state: MenuBarIconState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frame = 0
+    @State private var demoState: MenuBarIconState?
+    private let demo = UserDefaults.standard.bool(forKey: "StudSyncIconDemo")
+
+    var body: some View {
+        let shown = demoState ?? state
+        Image(nsImage: image(for: shown))
+            .renderingMode(shown == .error ? .original : .template)
+            .accessibilityLabel("StudSync")
+            .task(id: shown == .syncing && !reduceMotion) {
+                frame = 0
+                guard shown == .syncing && !reduceMotion else { return }
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .milliseconds(75))
+                    frame = (frame + 1) % AppImages.menuBarSyncFrames.count
+                }
+            }
+            .task {
+                guard demo else { return }
+                while !Task.isCancelled {
+                    for next in MenuBarIconState.allCases {
+                        demoState = next
+                        try? await Task.sleep(for: .seconds(3))
+                    }
+                }
+            }
+    }
+
+    private func image(for state: MenuBarIconState) -> NSImage {
+        switch state {
+        case .idle: AppImages.menuBar
+        case .syncing: reduceMotion ? AppImages.menuBar : AppImages.menuBarSyncFrames[frame]
+        case .error: AppImages.menuBarError
+        }
     }
 }
 

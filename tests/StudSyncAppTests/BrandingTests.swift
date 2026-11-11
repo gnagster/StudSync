@@ -23,8 +23,20 @@ import Testing
         #expect(pixels.colorAt(x: 36, y: 36)!.alphaComponent > 0)
         #expect(AppImages.menuBar.isTemplate)
         #expect(!AppImages.menuBarError.isTemplate)
-        #expect(AppImages.menuBar.size.height == 18)
+        #expect(AppImages.menuBar.size.height == 18 * 0.85)
         #expect(AppImages.menuBarError.size == AppImages.menuBar.size)
+        #expect(AppImages.menuBarSyncFrames.count == 16)
+        for frame in AppImages.menuBarSyncFrames {
+            #expect(frame.isTemplate)
+            #expect(frame.size == AppImages.menuBar.size)
+        }
+        // The band moves: the logo's middle is bright in some frames and dimmed in others.
+        let middles = try AppImages.menuBarSyncFrames.map { frame in
+            let rep = try #require(NSBitmapImageRep(data: try #require(frame.tiffRepresentation)))
+            return try #require(rep.colorAt(x: rep.pixelsWide / 2, y: rep.pixelsHigh / 2)).alphaComponent
+        }
+        #expect(middles.max()! > 0.8)
+        #expect(middles.min()! < 0.5)
         let maskData = try #require(AppImages.menuBar.tiffRepresentation)
         let mask = try #require(NSBitmapImageRep(data: maskData))
         #expect(mask.colorAt(x: 0, y: 0)!.alphaComponent == 0)
