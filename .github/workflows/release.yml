@@ -8,8 +8,32 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 jobs:
+  tag:
+    name: Require a version tag on master
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
+          git merge-base --is-ancestor HEAD origin/master
+  codeql:
+    name: CodeQL
+    needs: tag
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+    uses: ./.github/workflows/codeql.yml
   release:
-    runs-on: macos-15-intel
+    # No draft is created unless the tagged commit passes a clean traced CodeQL scan.
+    needs: [tag, codeql]
+    runs-on: macos-15
     timeout-minutes: 20
     permissions:
       contents: write
@@ -17,17 +41,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Require a version tag on master
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-        run: |
-          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || exit 2
-          git merge-base --is-ancestor HEAD origin/master
       - run: swift test
       - name: Build and verify the downloadable archive
         env:
           RELEASE_TAG: ${{ github.ref_name }}
+          STUDSYNC_BUILD_CONFIGURATION: release
         run: ./script/package_release.sh "${RELEASE_TAG#v}" "$GITHUB_RUN_NUMBER" "$RUNNER_TEMP/release"
       - name: Publish release notes, archive and checksum
         env:

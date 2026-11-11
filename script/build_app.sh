@@ -9,8 +9,14 @@ if [[ "$APP" != /*.app || ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || ! "$BUILD"
     echo "Expected an absolute .app path, numeric major.minor.patch version, and positive build number." >&2
     exit 2
 fi
-swift build --arch arm64 -c release
-BIN_DIR="$(swift build --arch arm64 -c release --show-bin-path)"
+# PR CI bundles the debug build that `swift test` already compiled; releases always use release.
+CONFIGURATION="${STUDSYNC_BUILD_CONFIGURATION:-release}"
+if [[ "$CONFIGURATION" != release && "$CONFIGURATION" != debug ]]; then
+    echo "STUDSYNC_BUILD_CONFIGURATION must be release or debug." >&2
+    exit 2
+fi
+swift build --arch arm64 -c "$CONFIGURATION"
+BIN_DIR="$(swift build --arch arm64 -c "$CONFIGURATION" --show-bin-path)"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/StudSync" "$APP/Contents/MacOS/StudSync"
 cp "$ROOT_DIR/Sources/StudSyncApp/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"

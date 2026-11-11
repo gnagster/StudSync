@@ -2,6 +2,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 "$ROOT/script/test_review_gate.sh"
+"$ROOT/script/test_tested_tree.sh"
 scratch="$(mktemp -d)"
 trap 'rm -rf "$scratch"' EXIT
 mkdir -p "$scratch/repo/Sources" "$scratch/repo/docs" "$scratch/db"
@@ -29,19 +30,6 @@ echo 'Agent instructions' > AGENTS.md
 echo 'Security instructions' > SECURITY.md
 git add .; git commit -qm docs
 scope false
-docs="$(git rev-parse HEAD)"
-git checkout -q --detach "$base"
-echo '// Newer base' > Sources/Base.swift
-git add .; git commit -qm newer-base
-stale_base="$(git rev-parse HEAD)"
-git checkout -q --detach "$base"
-git merge -q --no-ff --no-edit "$docs"
-# Review events use the merge commit's own base, even when the event base is newer.
-: > "$scratch/output"
-GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$stale_base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
-grep -Fxq 'scan=false' "$scratch/output"
-git checkout -q --detach "$docs"
-if GITHUB_EVENT_NAME=pull_request_review STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh" > "$scratch/error" 2>&1; then exit 1; fi
 : > "$scratch/output"
 GITHUB_EVENT_NAME=push STUDSYNC_BASE_SHA="$base" GITHUB_OUTPUT="$scratch/output" "$ROOT/script/swift_scan_scope.sh"
 grep -Fxq 'scan=false' "$scratch/output"
@@ -71,4 +59,29 @@ if STUDSYNC_CODEQL_DATABASE="$scratch/db" "$ROOT/script/verify_codeql_sources.sh
 rm Sources/Missing.swift Sources/Test.swift
 if STUDSYNC_CODEQL_DATABASE="$scratch/db" "$ROOT/script/verify_codeql_sources.sh" > "$scratch/error" 2>&1; then exit 1; fi
 if STUDSYNC_CODEQL_DATABASE="$scratch/absent" "$ROOT/script/verify_codeql_sources.sh" > "$scratch/error" 2>&1; then exit 1; fi
+if STUDSYNC_BUILD_CONFIGURATION=fast "$ROOT/script/build_app.sh" "$scratch/Invalid.app" > "$scratch/error" 2>&1; then exit 1; fi
+grep -Fq 'STUDSYNC_BUILD_CONFIGURATION must be release or debug.' "$scratch/error" || exit 1
+test ! -e "$scratch/Invalid.app" || exit 1
+
+# The pre-push hook runs swift test for code changes and skips documentation-only pushes.
+mkdir -p "$scratch/bin"
+printf '#!/usr/bin/env bash\necho ran >> "$SWIFT_MARKER"\n' > "$scratch/bin/swift"
+chmod +x "$scratch/bin/swift"
+git checkout -q -B master "$base"
+git update-ref refs/remotes/origin/master "$base"
+pre_push() {
+    rm -f "$scratch/swift-ran"
+    printf 'refs/heads/topic %s refs/heads/topic %s\n' "$(git rev-parse HEAD)" "$1" \
+        | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+    if [[ "$2" == ran ]]; then test -s "$scratch/swift-ran" || exit 1; else test ! -e "$scratch/swift-ran" || exit 1; fi
+}
+zero=0000000000000000000000000000000000000000
+echo 'More notes' >> README.md; git commit -qam docs-only
+pre_push "$base" skipped
+pre_push "$zero" skipped # New branches compare against origin/master.
+echo '// Code' > Sources/Code.swift; git add .; git commit -qm code
+pre_push "$base" ran
+printf 'refs/heads/topic %s refs/heads/topic %s\n' "$base" "$zero" \
+    | PATH="$scratch/bin:$PATH" SWIFT_MARKER="$scratch/swift-ran" "$ROOT/script/pre_push.sh" > /dev/null
+test -s "$scratch/swift-ran" || exit 1 # Pushing a commit other than HEAD always tests.
 echo 'Workflow helper regressions passed.'

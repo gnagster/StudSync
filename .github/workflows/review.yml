@@ -1,0 +1,25 @@
+name: Review gate
+# Merge gate only: hosted tests run in CI on every push, in parallel with Codex and CodeRabbit.
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  gate:
+    # Keeps the existing required-check name so branch protection needs no rename.
+    name: Change scope
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require both current-head reviews and resolved feedback
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./script/require_review.sh
